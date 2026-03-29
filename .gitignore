@@ -19,8 +19,16 @@ out/
 
 # Environment
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Production configs
+*.prod.yml
+*.prod.conf
+Dockerfile.prod
+
+# Claude Code
+.claude/
 
 # IDE
 .vscode/
