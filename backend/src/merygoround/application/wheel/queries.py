@@ -5,11 +5,12 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from merygoround.application.shared.timezone import get_local_now
 from merygoround.application.shared.use_case import BaseQuery
 from merygoround.application.wheel.dtos import (
+    DailyProgressItem,
     SpinHistoryItem,
     SpinHistoryResponse,
     WheelSegmentResponse,
@@ -30,12 +31,13 @@ def _generate_color(name: str) -> str:
 class GetWheelSegmentsQuery(BaseQuery[uuid.UUID, list[WheelSegmentResponse]]):
     """Returns wheel segments with effective weights for the current hour.
 
-    Excludes chores that were already completed today.
+    Excludes chores that were already completed or deactivated today.
 
     Args:
         chore_repo: Chore repository for loading user chores.
         spin_repo: Spin session repository for checking today's completions.
         spin_service: Domain service for weight calculation.
+        tz_name: IANA timezone for date/hour calculations.
     """
 
     def __init__(
@@ -43,10 +45,12 @@ class GetWheelSegmentsQuery(BaseQuery[uuid.UUID, list[WheelSegmentResponse]]):
         chore_repo: ChoreRepository,
         spin_repo: SpinSessionRepository,
         spin_service: WheelSpinService,
+        tz_name: str = "UTC",
     ) -> None:
         self._chore_repo = chore_repo
         self._spin_repo = spin_repo
         self._spin_service = spin_service
+        self._tz_name = tz_name
 
     async def execute(self, input_data: uuid.UUID) -> list[WheelSegmentResponse]:
         """Build wheel segments for the user's chores.
@@ -61,10 +65,10 @@ class GetWheelSegmentsQuery(BaseQuery[uuid.UUID, list[WheelSegmentResponse]]):
         from merygoround.domain.chores.value_objects import Multiplicity
 
         chores = await self._chore_repo.get_by_user_id(input_data)
-        now = datetime.now(timezone.utc)
+        local_now = get_local_now(self._tz_name)
 
         completed_counts = await self._spin_repo.get_completed_counts_for_date(
-            input_data, now.date()
+            input_data, local_now.date()
         )
 
         segments: list[WheelSegmentResponse] = []
@@ -92,30 +96,35 @@ class GetWheelSegmentsQuery(BaseQuery[uuid.UUID, list[WheelSegmentResponse]]):
                     chore_id=adjusted.id,
                     name=adjusted.name,
                     color=_generate_color(adjusted.name),
-                    effective_weight=self._spin_service.get_effective_weight(adjusted, now.hour),
+                    effective_weight=self._spin_service.get_effective_weight(
+                        adjusted, local_now.hour
+                    ),
                 )
             )
 
         return segments
 
 
-class GetDailyProgressQuery(BaseQuery[uuid.UUID, list["DailyProgressItem"]]):
-    """Returns daily completion/skip progress per chore.
+class GetDailyProgressQuery(BaseQuery[uuid.UUID, list[DailyProgressItem]]):
+    """Returns daily completion/skip/deactivation progress per chore.
 
     Args:
         chore_repo: Chore repository for loading user chores.
         spin_repo: Spin session repository for checking today's counts.
+        tz_name: IANA timezone for date calculations.
     """
 
     def __init__(
         self,
-        chore_repo: "ChoreRepository",
-        spin_repo: "SpinSessionRepository",
+        chore_repo: ChoreRepository,
+        spin_repo: SpinSessionRepository,
+        tz_name: str = "UTC",
     ) -> None:
         self._chore_repo = chore_repo
         self._spin_repo = spin_repo
+        self._tz_name = tz_name
 
-    async def execute(self, input_data: uuid.UUID) -> list["DailyProgressItem"]:
+    async def execute(self, input_data: uuid.UUID) -> list[DailyProgressItem]:
         """Build daily progress for all user chores.
 
         Args:
@@ -124,12 +133,10 @@ class GetDailyProgressQuery(BaseQuery[uuid.UUID, list["DailyProgressItem"]]):
         Returns:
             List of DailyProgressItem DTOs.
         """
-        from merygoround.application.wheel.dtos import DailyProgressItem
-
         chores = await self._chore_repo.get_by_user_id(input_data)
-        now = datetime.now(timezone.utc)
+        local_now = get_local_now(self._tz_name)
         status_counts = await self._spin_repo.get_status_counts_for_date(
-            input_data, now.date()
+            input_data, local_now.date()
         )
 
         items: list[DailyProgressItem] = []
@@ -140,6 +147,7 @@ class GetDailyProgressQuery(BaseQuery[uuid.UUID, list["DailyProgressItem"]]):
                     chore_id=chore.id,
                     completed=counts.get("COMPLETED", 0),
                     skipped=counts.get("SKIPPED", 0),
+                    deactivated=counts.get("DEACTIVATED", 0),
                     multiplicity=chore.wheel_config.multiplicity.value,
                 )
             )

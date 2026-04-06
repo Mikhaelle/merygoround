@@ -71,7 +71,7 @@ class TestGetWheelSegmentsQuery:
         chore_repo.get_by_user_id.return_value = chores
         spin_repo.get_completed_counts_for_date.return_value = {}
 
-        query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service)
+        query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service, tz_name="UTC")
         segments = await query.execute(user_id)
 
         assert len(segments) == 3
@@ -85,7 +85,7 @@ class TestGetWheelSegmentsQuery:
         chore_repo.get_by_user_id.return_value = [c1, c2]
         spin_repo.get_completed_counts_for_date.return_value = {c1.id: 1}
 
-        query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service)
+        query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service, tz_name="UTC")
         segments = await query.execute(user_id)
 
         assert len(segments) == 1
@@ -99,7 +99,7 @@ class TestGetWheelSegmentsQuery:
         chore_repo.get_by_user_id.return_value = [chore]
         spin_repo.get_completed_counts_for_date.return_value = {chore.id: 1}
 
-        query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service)
+        query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service, tz_name="UTC")
         segments = await query.execute(user_id)
 
         assert len(segments) == 1
@@ -112,7 +112,7 @@ class TestGetWheelSegmentsQuery:
         chore_repo.get_by_user_id.return_value = [chore]
         spin_repo.get_completed_counts_for_date.return_value = {chore.id: 2}
 
-        query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service)
+        query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service, tz_name="UTC")
         segments = await query.execute(user_id)
 
         assert len(segments) == 0
@@ -132,7 +132,7 @@ class TestGetDailyProgressQuery:
             chores[1].id: {"SKIPPED": 1},
         }
 
-        query = GetDailyProgressQuery(chore_repo, spin_repo)
+        query = GetDailyProgressQuery(chore_repo, spin_repo, tz_name="UTC")
         items = await query.execute(user_id)
 
         assert len(items) == 3
@@ -151,7 +151,7 @@ class TestGetDailyProgressQuery:
         chore_repo.get_by_user_id.return_value = [chore]
         spin_repo.get_status_counts_for_date.return_value = {}
 
-        query = GetDailyProgressQuery(chore_repo, spin_repo)
+        query = GetDailyProgressQuery(chore_repo, spin_repo, tz_name="UTC")
         items = await query.execute(user_id)
 
         assert items[0].multiplicity == 5
@@ -163,10 +163,27 @@ class TestGetDailyProgressQuery:
         chore_repo.get_by_user_id.return_value = []
         spin_repo.get_status_counts_for_date.return_value = {}
 
-        query = GetDailyProgressQuery(chore_repo, spin_repo)
+        query = GetDailyProgressQuery(chore_repo, spin_repo, tz_name="UTC")
         items = await query.execute(user_id)
 
         assert items == []
+
+    async def test_includes_deactivated_count(
+        self, user_id, chore_repo, spin_repo
+    ) -> None:
+        """Progress includes deactivated count when present."""
+        chore = _make_chore(user_id, multiplicity=3)
+        chore_repo.get_by_user_id.return_value = [chore]
+        spin_repo.get_status_counts_for_date.return_value = {
+            chore.id: {"COMPLETED": 1, "DEACTIVATED": 1},
+        }
+
+        query = GetDailyProgressQuery(chore_repo, spin_repo, tz_name="UTC")
+        items = await query.execute(user_id)
+
+        assert items[0].completed == 1
+        assert items[0].deactivated == 1
+        assert items[0].skipped == 0
 
 
 class TestGetSpinHistoryQuery:

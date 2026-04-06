@@ -12,9 +12,14 @@ from merygoround.application.chores.dtos import (
     TimeWeightRuleDTO,
     WheelConfigDTO,
 )
+from merygoround.application.shared.timezone import get_local_now
 from merygoround.application.shared.use_case import BaseCommand
 from merygoround.application.wheel.dtos import SpinResultResponse
-from merygoround.domain.shared.exceptions import EntityNotFoundError
+from merygoround.domain.shared.exceptions import (
+    AuthorizationError,
+    EntityNotFoundError,
+    ValidationError,
+)
 from merygoround.domain.wheel.entities import SpinSession, SpinStatus
 
 if TYPE_CHECKING:
@@ -54,6 +59,7 @@ class SpinWheelCommand(BaseCommand[SpinWheelInput, SpinResultResponse]):
         chore_repo: Chore repository for loading user chores.
         spin_repo: Spin session repository for persistence.
         spin_service: Domain service for weighted random selection.
+        tz_name: IANA timezone for date/hour calculations.
     """
 
     def __init__(
@@ -61,10 +67,12 @@ class SpinWheelCommand(BaseCommand[SpinWheelInput, SpinResultResponse]):
         chore_repo: ChoreRepository,
         spin_repo: SpinSessionRepository,
         spin_service: WheelSpinService,
+        tz_name: str = "UTC",
     ) -> None:
         self._chore_repo = chore_repo
         self._spin_repo = spin_repo
         self._spin_service = spin_service
+        self._tz_name = tz_name
 
     async def execute(self, input_data: SpinWheelInput) -> SpinResultResponse:
         """Load user chores, spin the wheel, and persist the result.
@@ -82,10 +90,10 @@ class SpinWheelCommand(BaseCommand[SpinWheelInput, SpinResultResponse]):
         from merygoround.domain.chores.value_objects import Multiplicity
 
         chores = await self._chore_repo.get_by_user_id(input_data.user_id)
-        now = datetime.now(timezone.utc)
+        local_now = get_local_now(self._tz_name)
 
         completed_counts = await self._spin_repo.get_completed_counts_for_date(
-            input_data.user_id, now.date()
+            input_data.user_id, local_now.date()
         )
 
         available_chores: list[Chore] = []
@@ -108,7 +116,7 @@ class SpinWheelCommand(BaseCommand[SpinWheelInput, SpinResultResponse]):
                 )
                 available_chores.append(adjusted)
 
-        selected = self._spin_service.spin(available_chores, now.hour)
+        selected = self._spin_service.spin(available_chores, local_now.hour)
 
         session = SpinSession(
             user_id=input_data.user_id,
@@ -173,10 +181,12 @@ class ResetChoreCommand(BaseCommand[ResetChoreInput, int]):
 
     Args:
         spin_repo: Spin session repository for persistence.
+        tz_name: IANA timezone for date calculations.
     """
 
-    def __init__(self, spin_repo: SpinSessionRepository) -> None:
+    def __init__(self, spin_repo: SpinSessionRepository, tz_name: str = "UTC") -> None:
         self._spin_repo = spin_repo
+        self._tz_name = tz_name
 
     async def execute(self, input_data: ResetChoreInput) -> int:
         """Delete all spin sessions for a chore today.
@@ -187,7 +197,7 @@ class ResetChoreCommand(BaseCommand[ResetChoreInput, int]):
         Returns:
             The number of deleted sessions.
         """
-        today = datetime.now(timezone.utc).date()
+        today = get_local_now(self._tz_name).date()
         return await self._spin_repo.delete_for_chore_on_date(
             input_data.user_id, input_data.chore_id, today
         )
@@ -198,10 +208,12 @@ class ResetDailyWheelCommand(BaseCommand[ResetDailyWheelInput, int]):
 
     Args:
         spin_repo: Spin session repository for persistence.
+        tz_name: IANA timezone for date calculations.
     """
 
-    def __init__(self, spin_repo: SpinSessionRepository) -> None:
+    def __init__(self, spin_repo: SpinSessionRepository, tz_name: str = "UTC") -> None:
         self._spin_repo = spin_repo
+        self._tz_name = tz_name
 
     async def execute(self, input_data: ResetDailyWheelInput) -> int:
         """Delete all spin sessions for today.
@@ -212,7 +224,7 @@ class ResetDailyWheelCommand(BaseCommand[ResetDailyWheelInput, int]):
         Returns:
             The number of deleted sessions.
         """
-        today = datetime.now(timezone.utc).date()
+        today = get_local_now(self._tz_name).date()
         return await self._spin_repo.delete_for_date(input_data.user_id, today)
 
 
@@ -235,13 +247,15 @@ class QuickCompleteChoreCommand(BaseCommand[QuickCompleteChoreInput, None]):
     Args:
         chore_repo: Chore repository for validation.
         spin_repo: Spin session repository for persistence.
+        tz_name: IANA timezone for date calculations.
     """
 
     def __init__(
-        self, chore_repo: ChoreRepository, spin_repo: SpinSessionRepository
+        self, chore_repo: ChoreRepository, spin_repo: SpinSessionRepository, tz_name: str = "UTC"
     ) -> None:
         self._chore_repo = chore_repo
         self._spin_repo = spin_repo
+        self._tz_name = tz_name
 
     async def execute(self, input_data: QuickCompleteChoreInput) -> None:
         """Create a completed spin session for the given chore.
@@ -251,10 +265,22 @@ class QuickCompleteChoreCommand(BaseCommand[QuickCompleteChoreInput, None]):
 
         Raises:
             EntityNotFoundError: If the chore does not exist.
+            AuthorizationError: If the chore does not belong to the user.
+            ValidationError: If the chore has reached its daily multiplicity limit.
         """
         chore = await self._chore_repo.get_by_id(input_data.chore_id)
         if chore is None:
             raise EntityNotFoundError("Chore", str(input_data.chore_id))
+        if chore.user_id != input_data.user_id:
+            raise AuthorizationError("Not authorized to modify this chore")
+
+        local_now = get_local_now(self._tz_name)
+        completed_counts = await self._spin_repo.get_completed_counts_for_date(
+            input_data.user_id, local_now.date()
+        )
+        done = completed_counts.get(input_data.chore_id, 0)
+        if done >= chore.wheel_config.multiplicity.value:
+            raise ValidationError("Chore has reached its daily multiplicity limit")
 
         now = datetime.now(timezone.utc)
         session = SpinSession(
@@ -303,10 +329,13 @@ class QuickSkipChoreCommand(BaseCommand[QuickSkipChoreInput, None]):
 
         Raises:
             EntityNotFoundError: If the chore does not exist.
+            AuthorizationError: If the chore does not belong to the user.
         """
         chore = await self._chore_repo.get_by_id(input_data.chore_id)
         if chore is None:
             raise EntityNotFoundError("Chore", str(input_data.chore_id))
+        if chore.user_id != input_data.user_id:
+            raise AuthorizationError("Not authorized to modify this chore")
 
         now = datetime.now(timezone.utc)
         session = SpinSession(
@@ -316,6 +345,72 @@ class QuickSkipChoreCommand(BaseCommand[QuickSkipChoreInput, None]):
             spun_at=now,
             completed_at=now,
             status=SpinStatus.SKIPPED,
+        )
+        await self._spin_repo.add(session)
+
+
+@dataclass
+class QuickDeactivateChoreInput:
+    """Input for QuickDeactivateChoreCommand.
+
+    Attributes:
+        user_id: The requesting user.
+        chore_id: The chore to deactivate for today.
+    """
+
+    user_id: uuid.UUID
+    chore_id: uuid.UUID
+
+
+class QuickDeactivateChoreCommand(BaseCommand[QuickDeactivateChoreInput, None]):
+    """Deactivates a chore for today (not needed today), counting against multiplicity.
+
+    Args:
+        chore_repo: Chore repository for validation.
+        spin_repo: Spin session repository for persistence.
+        tz_name: IANA timezone for date calculations.
+    """
+
+    def __init__(
+        self, chore_repo: ChoreRepository, spin_repo: SpinSessionRepository, tz_name: str = "UTC"
+    ) -> None:
+        self._chore_repo = chore_repo
+        self._spin_repo = spin_repo
+        self._tz_name = tz_name
+
+    async def execute(self, input_data: QuickDeactivateChoreInput) -> None:
+        """Create a deactivated spin session for the given chore.
+
+        Args:
+            input_data: Contains the user ID and chore ID.
+
+        Raises:
+            EntityNotFoundError: If the chore does not exist.
+            AuthorizationError: If the chore does not belong to the user.
+            ValidationError: If the chore has reached its daily multiplicity limit.
+        """
+        chore = await self._chore_repo.get_by_id(input_data.chore_id)
+        if chore is None:
+            raise EntityNotFoundError("Chore", str(input_data.chore_id))
+        if chore.user_id != input_data.user_id:
+            raise AuthorizationError("Not authorized to modify this chore")
+
+        local_now = get_local_now(self._tz_name)
+        completed_counts = await self._spin_repo.get_completed_counts_for_date(
+            input_data.user_id, local_now.date()
+        )
+        done = completed_counts.get(input_data.chore_id, 0)
+        if done >= chore.wheel_config.multiplicity.value:
+            raise ValidationError("Chore has reached its daily multiplicity limit")
+
+        now = datetime.now(timezone.utc)
+        session = SpinSession(
+            user_id=input_data.user_id,
+            selected_chore_id=chore.id,
+            chore_name=chore.name,
+            spun_at=now,
+            completed_at=now,
+            status=SpinStatus.DEACTIVATED,
         )
         await self._spin_repo.add(session)
 
@@ -338,10 +433,16 @@ class CompleteSpinSessionCommand(BaseCommand[CompleteSpinInput, None]):
 
         Raises:
             EntityNotFoundError: If the session does not exist.
+            AuthorizationError: If the session does not belong to the user.
+            ValidationError: If the session is not in PENDING status.
         """
         session = await self._spin_repo.get_by_id(input_data.session_id)
         if session is None:
             raise EntityNotFoundError("SpinSession", str(input_data.session_id))
+        if session.user_id != input_data.user_id:
+            raise AuthorizationError("Not authorized to modify this session")
+        if session.status != SpinStatus.PENDING:
+            raise ValidationError(f"Cannot complete session with status {session.status.value}")
 
         session.status = SpinStatus.COMPLETED
         session.completed_at = datetime.now(timezone.utc)
@@ -379,10 +480,16 @@ class SkipSpinSessionCommand(BaseCommand[SkipSpinInput, None]):
 
         Raises:
             EntityNotFoundError: If the session does not exist.
+            AuthorizationError: If the session does not belong to the user.
+            ValidationError: If the session is not in PENDING status.
         """
         session = await self._spin_repo.get_by_id(input_data.session_id)
         if session is None:
             raise EntityNotFoundError("SpinSession", str(input_data.session_id))
+        if session.user_id != input_data.user_id:
+            raise AuthorizationError("Not authorized to modify this session")
+        if session.status != SpinStatus.PENDING:
+            raise ValidationError(f"Cannot skip session with status {session.status.value}")
 
         session.status = SpinStatus.SKIPPED
         session.completed_at = datetime.now(timezone.utc)

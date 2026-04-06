@@ -37,3 +37,4 @@ class Settings(BaseSettings):
     VAPID_CLAIMS_EMAIL: str = "mailto:admin@merygoround.app"
     CORS_ORIGINS: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"
+    APP_TIMEZONE: str = "America/Sao_Paulo"

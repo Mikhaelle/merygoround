@@ -46,6 +46,11 @@ export async function resetChore(choreId: string): Promise<void> {
   await apiClient.delete(`/wheel/chores/${choreId}/reset`);
 }
 
+/** Deactivate one instance of a chore for today (not needed today). */
+export async function quickDeactivateChore(choreId: string): Promise<void> {
+  await apiClient.post(`/wheel/chores/${choreId}/deactivate`);
+}
+
 /** Reset today's wheel by clearing all spin sessions for the day. */
 export async function resetDaily(): Promise<void> {
   await apiClient.delete("/wheel/reset-daily");

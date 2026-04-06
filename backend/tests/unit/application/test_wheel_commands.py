@@ -13,6 +13,8 @@ from merygoround.application.wheel.commands import (
     CompleteSpinSessionCommand,
     QuickCompleteChoreCommand,
     QuickCompleteChoreInput,
+    QuickDeactivateChoreCommand,
+    QuickDeactivateChoreInput,
     QuickSkipChoreCommand,
     QuickSkipChoreInput,
     ResetChoreCommand,
@@ -26,7 +28,7 @@ from merygoround.application.wheel.commands import (
 )
 from merygoround.domain.chores.entities import Chore, WheelConfiguration
 from merygoround.domain.chores.value_objects import Duration, Multiplicity
-from merygoround.domain.shared.exceptions import EntityNotFoundError
+from merygoround.domain.shared.exceptions import AuthorizationError, EntityNotFoundError, ValidationError
 from merygoround.domain.wheel.entities import SpinSession, SpinStatus
 from merygoround.domain.wheel.exceptions import NoChoresAvailableError
 
@@ -35,6 +37,12 @@ from merygoround.domain.wheel.exceptions import NoChoresAvailableError
 def user_id() -> uuid.UUID:
     """Provide a fixed user UUID for tests."""
     return uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
+
+@pytest.fixture
+def other_user_id() -> uuid.UUID:
+    """Provide a different user UUID for ownership tests."""
+    return uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
 
 @pytest.fixture
@@ -98,7 +106,7 @@ class TestSpinWheelCommand:
         spin_service.spin.return_value = chore
         spin_repo.add.side_effect = lambda s: s
 
-        command = SpinWheelCommand(chore_repo, spin_repo, spin_service)
+        command = SpinWheelCommand(chore_repo, spin_repo, spin_service, tz_name="UTC")
         result = await command.execute(SpinWheelInput(user_id=user_id))
 
         assert result.status == "PENDING"
@@ -114,7 +122,7 @@ class TestSpinWheelCommand:
 
         spin_service.spin.side_effect = NoChoresAvailableError()
 
-        command = SpinWheelCommand(chore_repo, spin_repo, spin_service)
+        command = SpinWheelCommand(chore_repo, spin_repo, spin_service, tz_name="UTC")
         with pytest.raises(NoChoresAvailableError):
             await command.execute(SpinWheelInput(user_id=user_id))
 
@@ -135,7 +143,7 @@ class TestSpinWheelCommand:
 
         spin_service.spin.side_effect = capture_spin
 
-        command = SpinWheelCommand(chore_repo, spin_repo, spin_service)
+        command = SpinWheelCommand(chore_repo, spin_repo, spin_service, tz_name="UTC")
         await command.execute(SpinWheelInput(user_id=user_id))
 
         assert len(captured_chores) == 1
@@ -169,6 +177,24 @@ class TestCompleteSpinSessionCommand:
                 CompleteSpinInput(user_id=user_id, session_id=uuid.uuid4())
             )
 
+    async def test_complete_raises_for_wrong_user(self, user_id, other_user_id, spin_repo) -> None:
+        """Completing another user's session raises AuthorizationError."""
+        session = _make_session(other_user_id, uuid.uuid4())
+        spin_repo.get_by_id.return_value = session
+
+        command = CompleteSpinSessionCommand(spin_repo)
+        with pytest.raises(AuthorizationError):
+            await command.execute(CompleteSpinInput(user_id=user_id, session_id=session.id))
+
+    async def test_complete_raises_when_not_pending(self, user_id, spin_repo) -> None:
+        """Completing an already completed session raises ValidationError."""
+        session = _make_session(user_id, uuid.uuid4(), status=SpinStatus.COMPLETED)
+        spin_repo.get_by_id.return_value = session
+
+        command = CompleteSpinSessionCommand(spin_repo)
+        with pytest.raises(ValidationError):
+            await command.execute(CompleteSpinInput(user_id=user_id, session_id=session.id))
+
 
 class TestSkipSpinSessionCommand:
     """Test suite for SkipSpinSessionCommand."""
@@ -196,6 +222,24 @@ class TestSkipSpinSessionCommand:
                 SkipSpinInput(user_id=user_id, session_id=uuid.uuid4())
             )
 
+    async def test_skip_raises_for_wrong_user(self, user_id, other_user_id, spin_repo) -> None:
+        """Skipping another user's session raises AuthorizationError."""
+        session = _make_session(other_user_id, uuid.uuid4())
+        spin_repo.get_by_id.return_value = session
+
+        command = SkipSpinSessionCommand(spin_repo)
+        with pytest.raises(AuthorizationError):
+            await command.execute(SkipSpinInput(user_id=user_id, session_id=session.id))
+
+    async def test_skip_raises_when_not_pending(self, user_id, spin_repo) -> None:
+        """Skipping an already skipped session raises ValidationError."""
+        session = _make_session(user_id, uuid.uuid4(), status=SpinStatus.SKIPPED)
+        spin_repo.get_by_id.return_value = session
+
+        command = SkipSpinSessionCommand(spin_repo)
+        with pytest.raises(ValidationError):
+            await command.execute(SkipSpinInput(user_id=user_id, session_id=session.id))
+
 
 class TestQuickCompleteChoreCommand:
     """Test suite for QuickCompleteChoreCommand."""
@@ -204,9 +248,10 @@ class TestQuickCompleteChoreCommand:
         """Quick complete creates a spin session with COMPLETED status."""
         chore = _make_chore(user_id, name="Dishes")
         chore_repo.get_by_id.return_value = chore
+        spin_repo.get_completed_counts_for_date.return_value = {}
         spin_repo.add.side_effect = lambda s: s
 
-        command = QuickCompleteChoreCommand(chore_repo, spin_repo)
+        command = QuickCompleteChoreCommand(chore_repo, spin_repo, tz_name="UTC")
         await command.execute(QuickCompleteChoreInput(user_id=user_id, chore_id=chore.id))
 
         added_session = spin_repo.add.call_args[0][0]
@@ -219,11 +264,30 @@ class TestQuickCompleteChoreCommand:
         """Quick complete raises EntityNotFoundError for nonexistent chore."""
         chore_repo.get_by_id.return_value = None
 
-        command = QuickCompleteChoreCommand(chore_repo, spin_repo)
+        command = QuickCompleteChoreCommand(chore_repo, spin_repo, tz_name="UTC")
         with pytest.raises(EntityNotFoundError):
             await command.execute(
                 QuickCompleteChoreInput(user_id=user_id, chore_id=uuid.uuid4())
             )
+
+    async def test_raises_for_wrong_user(self, user_id, other_user_id, chore_repo, spin_repo) -> None:
+        """Quick complete raises AuthorizationError for another user's chore."""
+        chore = _make_chore(other_user_id)
+        chore_repo.get_by_id.return_value = chore
+
+        command = QuickCompleteChoreCommand(chore_repo, spin_repo, tz_name="UTC")
+        with pytest.raises(AuthorizationError):
+            await command.execute(QuickCompleteChoreInput(user_id=user_id, chore_id=chore.id))
+
+    async def test_raises_when_multiplicity_exceeded(self, user_id, chore_repo, spin_repo) -> None:
+        """Quick complete raises ValidationError when daily multiplicity is reached."""
+        chore = _make_chore(user_id, multiplicity=1)
+        chore_repo.get_by_id.return_value = chore
+        spin_repo.get_completed_counts_for_date.return_value = {chore.id: 1}
+
+        command = QuickCompleteChoreCommand(chore_repo, spin_repo, tz_name="UTC")
+        with pytest.raises(ValidationError):
+            await command.execute(QuickCompleteChoreInput(user_id=user_id, chore_id=chore.id))
 
 
 class TestQuickSkipChoreCommand:
@@ -253,6 +317,64 @@ class TestQuickSkipChoreCommand:
                 QuickSkipChoreInput(user_id=user_id, chore_id=uuid.uuid4())
             )
 
+    async def test_raises_for_wrong_user(self, user_id, other_user_id, chore_repo, spin_repo) -> None:
+        """Quick skip raises AuthorizationError for another user's chore."""
+        chore = _make_chore(other_user_id)
+        chore_repo.get_by_id.return_value = chore
+
+        command = QuickSkipChoreCommand(chore_repo, spin_repo)
+        with pytest.raises(AuthorizationError):
+            await command.execute(QuickSkipChoreInput(user_id=user_id, chore_id=chore.id))
+
+
+class TestQuickDeactivateChoreCommand:
+    """Test suite for QuickDeactivateChoreCommand."""
+
+    async def test_creates_deactivated_session(self, user_id, chore_repo, spin_repo) -> None:
+        """Quick deactivate creates a spin session with DEACTIVATED status."""
+        chore = _make_chore(user_id, name="Vacuum")
+        chore_repo.get_by_id.return_value = chore
+        spin_repo.get_completed_counts_for_date.return_value = {}
+        spin_repo.add.side_effect = lambda s: s
+
+        command = QuickDeactivateChoreCommand(chore_repo, spin_repo, tz_name="UTC")
+        await command.execute(QuickDeactivateChoreInput(user_id=user_id, chore_id=chore.id))
+
+        added_session = spin_repo.add.call_args[0][0]
+        assert added_session.status == SpinStatus.DEACTIVATED
+        assert added_session.chore_name == "Vacuum"
+        assert added_session.completed_at is not None
+        assert added_session.user_id == user_id
+
+    async def test_raises_when_chore_not_found(self, user_id, chore_repo, spin_repo) -> None:
+        """Quick deactivate raises EntityNotFoundError for nonexistent chore."""
+        chore_repo.get_by_id.return_value = None
+
+        command = QuickDeactivateChoreCommand(chore_repo, spin_repo, tz_name="UTC")
+        with pytest.raises(EntityNotFoundError):
+            await command.execute(
+                QuickDeactivateChoreInput(user_id=user_id, chore_id=uuid.uuid4())
+            )
+
+    async def test_raises_for_wrong_user(self, user_id, other_user_id, chore_repo, spin_repo) -> None:
+        """Quick deactivate raises AuthorizationError for another user's chore."""
+        chore = _make_chore(other_user_id)
+        chore_repo.get_by_id.return_value = chore
+
+        command = QuickDeactivateChoreCommand(chore_repo, spin_repo, tz_name="UTC")
+        with pytest.raises(AuthorizationError):
+            await command.execute(QuickDeactivateChoreInput(user_id=user_id, chore_id=chore.id))
+
+    async def test_raises_when_multiplicity_exceeded(self, user_id, chore_repo, spin_repo) -> None:
+        """Quick deactivate raises ValidationError when daily multiplicity is reached."""
+        chore = _make_chore(user_id, multiplicity=1)
+        chore_repo.get_by_id.return_value = chore
+        spin_repo.get_completed_counts_for_date.return_value = {chore.id: 1}
+
+        command = QuickDeactivateChoreCommand(chore_repo, spin_repo, tz_name="UTC")
+        with pytest.raises(ValidationError):
+            await command.execute(QuickDeactivateChoreInput(user_id=user_id, chore_id=chore.id))
+
 
 class TestResetChoreCommand:
     """Test suite for ResetChoreCommand."""
@@ -262,7 +384,7 @@ class TestResetChoreCommand:
         chore_id = uuid.uuid4()
         spin_repo.delete_for_chore_on_date.return_value = 2
 
-        command = ResetChoreCommand(spin_repo)
+        command = ResetChoreCommand(spin_repo, tz_name="UTC")
         result = await command.execute(ResetChoreInput(user_id=user_id, chore_id=chore_id))
 
         assert result == 2
@@ -279,7 +401,7 @@ class TestResetDailyWheelCommand:
         """Reset daily deletes all sessions for today."""
         spin_repo.delete_for_date.return_value = 5
 
-        command = ResetDailyWheelCommand(spin_repo)
+        command = ResetDailyWheelCommand(spin_repo, tz_name="UTC")
         result = await command.execute(ResetDailyWheelInput(user_id=user_id))
 
         assert result == 5

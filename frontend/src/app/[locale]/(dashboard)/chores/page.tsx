@@ -92,11 +92,11 @@ export default function ChoresPage() {
     [fetchProgress, t, tCommon],
   );
 
-  const handleSkip = useCallback(
+  const handleDeactivate = useCallback(
     async (choreId: string) => {
       try {
-        await wheelApi.quickSkipChore(choreId);
-        toast.info(t("choreSkipped"));
+        await wheelApi.quickDeactivateChore(choreId);
+        toast.info(t("choreDeactivated"));
         await fetchProgress();
       } catch {
         toast.error(tCommon("error"));
@@ -149,10 +149,10 @@ export default function ChoresPage() {
         onEdit={handleEdit}
         onDelete={(chore) => setDeleteTarget(chore)}
         onComplete={handleComplete}
-        onSkip={handleSkip}
+        onDeactivate={handleDeactivate}
         onResetChore={handleResetChore}
         onResetDaily={handleResetDaily}
-        hasDailyProgress={progress.some((p) => p.completed > 0 || p.skipped > 0)}
+        hasDailyProgress={progress.some((p) => p.completed > 0 || p.skipped > 0 || p.deactivated > 0)}
       />
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>

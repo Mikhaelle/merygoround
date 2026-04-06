@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,8 +21,9 @@ class SqlAlchemySpinSessionRepository(SpinSessionRepository):
         session: The async database session.
     """
 
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, tz_name: str = "UTC") -> None:
         self._session = session
+        self._tz_name = tz_name
 
     async def get_by_id(self, session_id: uuid.UUID) -> SpinSession | None:
         """Retrieve a spin session by its unique identifier.
@@ -83,8 +85,9 @@ class SqlAlchemySpinSessionRepository(SpinSessionRepository):
         Returns:
             Dict mapping chore UUID to number of done sessions on that date.
         """
-        day_start = datetime.combine(target_date, time.min, tzinfo=timezone.utc)
-        day_end = datetime.combine(target_date, time.max, tzinfo=timezone.utc)
+        tz = ZoneInfo(self._tz_name)
+        day_start = datetime.combine(target_date, time.min, tzinfo=tz).astimezone(timezone.utc)
+        day_end = datetime.combine(target_date, time.max, tzinfo=tz).astimezone(timezone.utc)
 
         stmt = (
             select(
@@ -94,9 +97,9 @@ class SqlAlchemySpinSessionRepository(SpinSessionRepository):
             .where(
                 and_(
                     SpinSessionModel.user_id == user_id,
-                    SpinSessionModel.status.in_(["COMPLETED", "SKIPPED"]),
-                    SpinSessionModel.completed_at >= day_start,
-                    SpinSessionModel.completed_at <= day_end,
+                    SpinSessionModel.status.in_(["COMPLETED", "DEACTIVATED"]),
+                    SpinSessionModel.spun_at >= day_start,
+                    SpinSessionModel.spun_at <= day_end,
                 )
             )
             .group_by(SpinSessionModel.selected_chore_id)
@@ -116,8 +119,9 @@ class SqlAlchemySpinSessionRepository(SpinSessionRepository):
         Returns:
             Dict mapping chore UUID to dict of status -> count.
         """
-        day_start = datetime.combine(target_date, time.min, tzinfo=timezone.utc)
-        day_end = datetime.combine(target_date, time.max, tzinfo=timezone.utc)
+        tz = ZoneInfo(self._tz_name)
+        day_start = datetime.combine(target_date, time.min, tzinfo=tz).astimezone(timezone.utc)
+        day_end = datetime.combine(target_date, time.max, tzinfo=tz).astimezone(timezone.utc)
 
         stmt = (
             select(
@@ -155,8 +159,9 @@ class SqlAlchemySpinSessionRepository(SpinSessionRepository):
         Returns:
             The number of deleted sessions.
         """
-        day_start = datetime.combine(target_date, time.min, tzinfo=timezone.utc)
-        day_end = datetime.combine(target_date, time.max, tzinfo=timezone.utc)
+        tz = ZoneInfo(self._tz_name)
+        day_start = datetime.combine(target_date, time.min, tzinfo=tz).astimezone(timezone.utc)
+        day_end = datetime.combine(target_date, time.max, tzinfo=tz).astimezone(timezone.utc)
 
         stmt = (
             delete(SpinSessionModel)
@@ -184,8 +189,9 @@ class SqlAlchemySpinSessionRepository(SpinSessionRepository):
         Returns:
             The number of deleted sessions.
         """
-        day_start = datetime.combine(target_date, time.min, tzinfo=timezone.utc)
-        day_end = datetime.combine(target_date, time.max, tzinfo=timezone.utc)
+        tz = ZoneInfo(self._tz_name)
+        day_start = datetime.combine(target_date, time.min, tzinfo=tz).astimezone(timezone.utc)
+        day_end = datetime.combine(target_date, time.max, tzinfo=tz).astimezone(timezone.utc)
 
         stmt = (
             delete(SpinSessionModel)

@@ -28,9 +28,22 @@ def user_id() -> uuid.UUID:
 
 
 @pytest.fixture
+def other_user_id() -> uuid.UUID:
+    """Provide a second user UUID for ownership tests."""
+    return uuid.UUID("87654321-4321-4321-4321-cba987654321")
+
+
+@pytest.fixture
 def auth_headers(jwt_service: JWTService, user_id: uuid.UUID) -> dict[str, str]:
     """Provide authorization headers with a valid access token."""
     token = jwt_service.create_access_token(str(user_id))
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def other_auth_headers(jwt_service: JWTService, other_user_id: uuid.UUID) -> dict[str, str]:
+    """Provide authorization headers for the second user."""
+    token = jwt_service.create_access_token(str(other_user_id))
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -41,6 +54,19 @@ async def seed_user(session, user_id: uuid.UUID) -> None:
         id=user_id,
         email="wheel-test@example.com",
         name="Wheel Tester",
+        hashed_password="fakehash",
+    )
+    session.add(user)
+    await session.flush()
+
+
+@pytest.fixture
+async def seed_other_user(session, other_user_id: uuid.UUID, seed_user) -> None:
+    """Insert a second test user into the database."""
+    user = UserModel(
+        id=other_user_id,
+        email="other-test@example.com",
+        name="Other Tester",
         hashed_password="fakehash",
     )
     session.add(user)
@@ -113,6 +139,29 @@ class TestCompleteEndpoint:
         )
         assert resp.status_code == 404
 
+    async def test_complete_other_users_session_returns_403(
+        self, client: AsyncClient, auth_headers, other_auth_headers, seed_chores, seed_other_user
+    ) -> None:
+        """Completing another user's session returns 403."""
+        spin_resp = await client.post("/api/v1/wheel/spin", headers=auth_headers)
+        session_id = spin_resp.json()["id"]
+
+        resp = await client.put(
+            f"/api/v1/wheel/sessions/{session_id}/complete", headers=other_auth_headers
+        )
+        assert resp.status_code == 403
+
+    async def test_complete_already_completed_returns_400(
+        self, client: AsyncClient, auth_headers, seed_chores
+    ) -> None:
+        """Completing an already completed session returns 400."""
+        spin_resp = await client.post("/api/v1/wheel/spin", headers=auth_headers)
+        session_id = spin_resp.json()["id"]
+
+        await client.put(f"/api/v1/wheel/sessions/{session_id}/complete", headers=auth_headers)
+        resp = await client.put(f"/api/v1/wheel/sessions/{session_id}/complete", headers=auth_headers)
+        assert resp.status_code == 400
+
 
 class TestSkipEndpoint:
     """Test suite for PUT /api/v1/wheel/sessions/{id}/skip."""
@@ -128,6 +177,18 @@ class TestSkipEndpoint:
             f"/api/v1/wheel/sessions/{session_id}/skip", headers=auth_headers
         )
         assert resp.status_code == 204
+
+    async def test_skip_other_users_session_returns_403(
+        self, client: AsyncClient, auth_headers, other_auth_headers, seed_chores, seed_other_user
+    ) -> None:
+        """Skipping another user's session returns 403."""
+        spin_resp = await client.post("/api/v1/wheel/spin", headers=auth_headers)
+        session_id = spin_resp.json()["id"]
+
+        resp = await client.put(
+            f"/api/v1/wheel/sessions/{session_id}/skip", headers=other_auth_headers
+        )
+        assert resp.status_code == 403
 
 
 class TestSegmentsEndpoint:
@@ -156,10 +217,10 @@ class TestSegmentsEndpoint:
         segment_ids = [s["chore_id"] for s in resp.json()]
         assert chore_id not in segment_ids
 
-    async def test_segments_excludes_skipped_chore(
+    async def test_segments_keep_skipped_chore(
         self, client: AsyncClient, auth_headers, seed_chores
     ) -> None:
-        """Skipped chores with multiplicity=1 are excluded from segments."""
+        """Skipped chores stay on the wheel (skip does not count against multiplicity)."""
         spin_resp = await client.post("/api/v1/wheel/spin", headers=auth_headers)
         session_id = spin_resp.json()["id"]
         skipped_chore_id = spin_resp.json()["chore"]["id"]
@@ -171,7 +232,20 @@ class TestSegmentsEndpoint:
         resp = await client.get("/api/v1/wheel/segments", headers=auth_headers)
         segments = resp.json()
         segment_ids = [s["chore_id"] for s in segments]
-        assert skipped_chore_id not in segment_ids
+        assert skipped_chore_id in segment_ids
+
+    async def test_segments_excludes_deactivated_chore(
+        self, client: AsyncClient, auth_headers, seed_chores
+    ) -> None:
+        """Deactivated chores with multiplicity=1 are excluded from segments."""
+        chore_id = str(seed_chores[0])  # Dishes, multiplicity=1
+        await client.post(
+            f"/api/v1/wheel/chores/{chore_id}/deactivate", headers=auth_headers
+        )
+
+        resp = await client.get("/api/v1/wheel/segments", headers=auth_headers)
+        segment_ids = [s["chore_id"] for s in resp.json()]
+        assert chore_id not in segment_ids
 
 
 class TestQuickCompleteEndpoint:
@@ -208,6 +282,15 @@ class TestQuickCompleteEndpoint:
         )
         assert resp.status_code == 404
 
+    async def test_quick_complete_exceeding_multiplicity_returns_400(
+        self, client: AsyncClient, auth_headers, seed_chores
+    ) -> None:
+        """Quick completing beyond multiplicity returns 400."""
+        chore_id = str(seed_chores[0])  # Dishes, multiplicity=1
+        await client.post(f"/api/v1/wheel/chores/{chore_id}/complete", headers=auth_headers)
+        resp = await client.post(f"/api/v1/wheel/chores/{chore_id}/complete", headers=auth_headers)
+        assert resp.status_code == 400
+
 
 class TestQuickSkipEndpoint:
     """Test suite for POST /api/v1/wheel/chores/{id}/skip."""
@@ -221,10 +304,10 @@ class TestQuickSkipEndpoint:
         )
         assert resp.status_code == 204
 
-    async def test_quick_skip_removes_from_segments(
+    async def test_quick_skip_does_not_remove_from_segments(
         self, client: AsyncClient, auth_headers, seed_chores
     ) -> None:
-        """Quick skipped chore disappears from wheel segments."""
+        """Quick skipped chore stays on the wheel (skip does not count against multiplicity)."""
         chore_id = str(seed_chores[0])
         await client.post(
             f"/api/v1/wheel/chores/{chore_id}/skip", headers=auth_headers
@@ -232,7 +315,51 @@ class TestQuickSkipEndpoint:
 
         resp = await client.get("/api/v1/wheel/segments", headers=auth_headers)
         segment_ids = [s["chore_id"] for s in resp.json()]
+        assert chore_id in segment_ids
+
+
+class TestQuickDeactivateEndpoint:
+    """Test suite for POST /api/v1/wheel/chores/{id}/deactivate."""
+
+    async def test_quick_deactivate_returns_204(
+        self, client: AsyncClient, auth_headers, seed_chores
+    ) -> None:
+        """Quick deactivating a chore returns 204."""
+        resp = await client.post(
+            f"/api/v1/wheel/chores/{seed_chores[0]}/deactivate", headers=auth_headers
+        )
+        assert resp.status_code == 204
+
+    async def test_quick_deactivate_removes_from_segments(
+        self, client: AsyncClient, auth_headers, seed_chores
+    ) -> None:
+        """Deactivated chore disappears from wheel segments."""
+        chore_id = str(seed_chores[0])  # Dishes, multiplicity=1
+        await client.post(
+            f"/api/v1/wheel/chores/{chore_id}/deactivate", headers=auth_headers
+        )
+
+        resp = await client.get("/api/v1/wheel/segments", headers=auth_headers)
+        segment_ids = [s["chore_id"] for s in resp.json()]
         assert chore_id not in segment_ids
+
+    async def test_quick_deactivate_nonexistent_chore_returns_404(
+        self, client: AsyncClient, auth_headers, seed_chores
+    ) -> None:
+        """Deactivating a nonexistent chore returns 404."""
+        resp = await client.post(
+            f"/api/v1/wheel/chores/{uuid.uuid4()}/deactivate", headers=auth_headers
+        )
+        assert resp.status_code == 404
+
+    async def test_quick_deactivate_exceeding_multiplicity_returns_400(
+        self, client: AsyncClient, auth_headers, seed_chores
+    ) -> None:
+        """Deactivating beyond multiplicity returns 400."""
+        chore_id = str(seed_chores[0])  # Dishes, multiplicity=1
+        await client.post(f"/api/v1/wheel/chores/{chore_id}/deactivate", headers=auth_headers)
+        resp = await client.post(f"/api/v1/wheel/chores/{chore_id}/deactivate", headers=auth_headers)
+        assert resp.status_code == 400
 
 
 class TestDailyProgressEndpoint:
@@ -265,6 +392,20 @@ class TestDailyProgressEndpoint:
         assert items[str(seed_chores[0])]["completed"] == 1
         assert items[str(seed_chores[1])]["skipped"] == 1
         assert items[str(seed_chores[2])]["completed"] == 0
+
+    async def test_progress_reflects_deactivations(
+        self, client: AsyncClient, auth_headers, seed_chores
+    ) -> None:
+        """Progress reflects deactivated chores."""
+        await client.post(
+            f"/api/v1/wheel/chores/{seed_chores[0]}/deactivate", headers=auth_headers
+        )
+
+        resp = await client.get("/api/v1/wheel/daily-progress", headers=auth_headers)
+        items = {item["chore_id"]: item for item in resp.json()}
+
+        assert items[str(seed_chores[0])]["deactivated"] == 1
+        assert items[str(seed_chores[0])]["completed"] == 0
 
 
 class TestResetChoreEndpoint:
@@ -368,6 +509,7 @@ class TestResetDailyEndpoint:
         for item in resp.json():
             assert item["completed"] == 0
             assert item["skipped"] == 0
+            assert item["deactivated"] == 0
 
 
 class TestHistoryEndpoint:

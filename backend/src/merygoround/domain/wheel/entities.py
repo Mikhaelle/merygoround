@@ -16,6 +16,7 @@ class SpinStatus(enum.Enum):
     PENDING = "PENDING"
     COMPLETED = "COMPLETED"
     SKIPPED = "SKIPPED"
+    DEACTIVATED = "DEACTIVATED"
 
 
 @dataclass

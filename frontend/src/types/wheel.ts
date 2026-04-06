@@ -1,6 +1,6 @@
 import type { Chore } from "./chore";
 
-export type SpinStatus = "PENDING" | "COMPLETED" | "SKIPPED";
+export type SpinStatus = "PENDING" | "COMPLETED" | "SKIPPED" | "DEACTIVATED";
 
 export interface SpinSession {
   id: string;
@@ -29,6 +29,7 @@ export interface DailyProgressItem {
   chore_id: string;
   completed: number;
   skipped: number;
+  deactivated: number;
   multiplicity: number;
 }
 

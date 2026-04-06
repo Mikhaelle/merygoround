@@ -16,7 +16,7 @@ interface ChoreListProps {
   onEdit: (chore: Chore) => void;
   onDelete: (chore: Chore) => void;
   onComplete: (choreId: string) => void;
-  onSkip: (choreId: string) => void;
+  onDeactivate: (choreId: string) => void;
   onResetChore: (choreId: string) => void;
   onResetDaily: () => void;
   hasDailyProgress: boolean;
@@ -30,7 +30,7 @@ export function ChoreList({
   onEdit,
   onDelete,
   onComplete,
-  onSkip,
+  onDeactivate,
   onResetChore,
   onResetDaily,
   hasDailyProgress,
@@ -104,7 +104,7 @@ export function ChoreList({
               onEdit={onEdit}
               onDelete={onDelete}
               onComplete={onComplete}
-              onSkip={onSkip}
+              onDeactivate={onDeactivate}
               onReset={onResetChore}
             />
           ))}

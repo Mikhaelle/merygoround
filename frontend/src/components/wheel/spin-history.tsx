@@ -5,7 +5,7 @@ import { useLocale } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Clock, Check, SkipForward, Hourglass } from "lucide-react";
+import { Clock, Check, SkipForward, Hourglass, EyeOff } from "lucide-react";
 import type { SpinHistoryItem } from "@/types/wheel";
 import { formatDateTime } from "@/lib/utils/format";
 
@@ -39,6 +39,8 @@ export function SpinHistory({ history, onComplete, onSkip }: SpinHistoryProps) {
         return <Check className="size-3.5" />;
       case "SKIPPED":
         return <SkipForward className="size-3.5" />;
+      case "DEACTIVATED":
+        return <EyeOff className="size-3.5" />;
       default:
         return <Hourglass className="size-3.5" />;
     }
@@ -49,6 +51,7 @@ export function SpinHistory({ history, onComplete, onSkip }: SpinHistoryProps) {
       case "COMPLETED":
         return "default";
       case "SKIPPED":
+      case "DEACTIVATED":
         return "secondary";
       default:
         return "outline";
@@ -61,6 +64,8 @@ export function SpinHistory({ history, onComplete, onSkip }: SpinHistoryProps) {
         return t("completed");
       case "SKIPPED":
         return t("skipped");
+      case "DEACTIVATED":
+        return t("deactivated");
       default:
         return t("pending");
     }

@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, Clock, Layers, Check, SkipForward, RotateCcw } from "lucide-react";
+import { Pencil, Trash2, Clock, Layers, Check, EyeOff, RotateCcw } from "lucide-react";
 import type { Chore } from "@/types/chore";
 import type { DailyProgressItem } from "@/types/wheel";
 import { formatDuration } from "@/lib/utils/format";
@@ -15,20 +15,20 @@ interface ChoreCardProps {
   onEdit: (chore: Chore) => void;
   onDelete: (chore: Chore) => void;
   onComplete?: (choreId: string) => void;
-  onSkip?: (choreId: string) => void;
+  onDeactivate?: (choreId: string) => void;
   onReset?: (choreId: string) => void;
 }
 
-/** Card displaying a single chore with complete/skip/reset actions. */
-export function ChoreCard({ chore, progress, onEdit, onDelete, onComplete, onSkip, onReset }: ChoreCardProps) {
+/** Card displaying a single chore with complete/deactivate/reset actions. */
+export function ChoreCard({ chore, progress, onEdit, onDelete, onComplete, onDeactivate, onReset }: ChoreCardProps) {
   const t = useTranslations("chores");
 
   const completed = progress?.completed ?? 0;
-  const skipped = progress?.skipped ?? 0;
+  const deactivated = progress?.deactivated ?? 0;
   const multiplicity = chore.wheel_config.multiplicity;
-  const done = completed + skipped;
+  const done = completed + deactivated;
   const allDone = done >= multiplicity;
-  const hasDayProgress = done > 0;
+  const hasDayProgress = done > 0 || (progress?.skipped ?? 0) > 0;
 
   return (
     <Card className={`group hover:shadow-md transition-all duration-200 hover:border-indigo-200 dark:hover:border-indigo-800 ${allDone ? "opacity-60" : ""}`}>
@@ -77,17 +77,17 @@ export function ChoreCard({ chore, progress, onEdit, onDelete, onComplete, onSki
           </div>
         </div>
 
-        {onComplete && onSkip && (
+        {onComplete && onDeactivate && (
           <div className="flex gap-2 mt-3 pt-3 border-t">
             <Button
               size="sm"
               variant="outline"
               className="flex-1 h-8 text-xs"
               disabled={allDone}
-              onClick={() => onSkip(chore.id)}
+              onClick={() => onDeactivate(chore.id)}
             >
-              <SkipForward className="size-3.5" />
-              {t("skip")}
+              <EyeOff className="size-3.5" />
+              {t("deactivate")}
             </Button>
             <Button
               size="sm"

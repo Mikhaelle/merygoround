@@ -8,12 +8,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from merygoround.api.dependencies import get_current_user, get_session
+from merygoround.api.config import Settings
+from merygoround.api.dependencies import get_current_user, get_session, get_settings
 from merygoround.application.wheel.commands import (
     CompleteSpinInput,
     CompleteSpinSessionCommand,
     QuickCompleteChoreCommand,
     QuickCompleteChoreInput,
+    QuickDeactivateChoreCommand,
+    QuickDeactivateChoreInput,
     QuickSkipChoreCommand,
     QuickSkipChoreInput,
     ResetChoreCommand,
@@ -52,20 +55,23 @@ router = APIRouter(prefix="/wheel", tags=["wheel"])
 async def spin_wheel(
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> SpinResultResponse:
     """Spin the wheel and get a random chore.
 
     Args:
         user_id: The authenticated user's UUID.
         session: Database session.
+        settings: Application settings.
 
     Returns:
         SpinResultResponse with the selected chore.
     """
+    tz = settings.APP_TIMEZONE
     chore_repo = SqlAlchemyChoreRepository(session)
-    spin_repo = SqlAlchemySpinSessionRepository(session)
+    spin_repo = SqlAlchemySpinSessionRepository(session, tz_name=tz)
     spin_service = WheelSpinService()
-    command = SpinWheelCommand(chore_repo, spin_repo, spin_service)
+    command = SpinWheelCommand(chore_repo, spin_repo, spin_service, tz_name=tz)
     return await command.execute(SpinWheelInput(user_id=user_id))
 
 
@@ -110,6 +116,7 @@ async def quick_complete_chore(
     chore_id: uuid.UUID,
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
     """Mark one instance of a chore as completed for today.
 
@@ -117,10 +124,12 @@ async def quick_complete_chore(
         chore_id: The UUID of the chore to complete.
         user_id: The authenticated user's UUID.
         session: Database session.
+        settings: Application settings.
     """
+    tz = settings.APP_TIMEZONE
     chore_repo = SqlAlchemyChoreRepository(session)
-    spin_repo = SqlAlchemySpinSessionRepository(session)
-    command = QuickCompleteChoreCommand(chore_repo, spin_repo)
+    spin_repo = SqlAlchemySpinSessionRepository(session, tz_name=tz)
+    command = QuickCompleteChoreCommand(chore_repo, spin_repo, tz_name=tz)
     await command.execute(QuickCompleteChoreInput(user_id=user_id, chore_id=chore_id))
 
 
@@ -143,11 +152,34 @@ async def quick_skip_chore(
     await command.execute(QuickSkipChoreInput(user_id=user_id, chore_id=chore_id))
 
 
+@router.post("/chores/{chore_id}/deactivate", status_code=204)
+async def quick_deactivate_chore(
+    chore_id: uuid.UUID,
+    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> None:
+    """Deactivate one instance of a chore for today (not needed today).
+
+    Args:
+        chore_id: The UUID of the chore to deactivate.
+        user_id: The authenticated user's UUID.
+        session: Database session.
+        settings: Application settings.
+    """
+    tz = settings.APP_TIMEZONE
+    chore_repo = SqlAlchemyChoreRepository(session)
+    spin_repo = SqlAlchemySpinSessionRepository(session, tz_name=tz)
+    command = QuickDeactivateChoreCommand(chore_repo, spin_repo, tz_name=tz)
+    await command.execute(QuickDeactivateChoreInput(user_id=user_id, chore_id=chore_id))
+
+
 @router.delete("/chores/{chore_id}/reset", status_code=204)
 async def reset_chore(
     chore_id: uuid.UUID,
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
     """Reset a specific chore for today by deleting its spin sessions.
 
@@ -155,9 +187,11 @@ async def reset_chore(
         chore_id: The UUID of the chore to reset.
         user_id: The authenticated user's UUID.
         session: Database session.
+        settings: Application settings.
     """
-    spin_repo = SqlAlchemySpinSessionRepository(session)
-    command = ResetChoreCommand(spin_repo)
+    tz = settings.APP_TIMEZONE
+    spin_repo = SqlAlchemySpinSessionRepository(session, tz_name=tz)
+    command = ResetChoreCommand(spin_repo, tz_name=tz)
     await command.execute(ResetChoreInput(user_id=user_id, chore_id=chore_id))
 
 
@@ -165,19 +199,22 @@ async def reset_chore(
 async def get_daily_progress(
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[DailyProgressItem]:
-    """Get daily completion/skip progress for all chores.
+    """Get daily completion/skip/deactivation progress for all chores.
 
     Args:
         user_id: The authenticated user's UUID.
         session: Database session.
+        settings: Application settings.
 
     Returns:
         List of DailyProgressItem DTOs.
     """
+    tz = settings.APP_TIMEZONE
     chore_repo = SqlAlchemyChoreRepository(session)
-    spin_repo = SqlAlchemySpinSessionRepository(session)
-    query = GetDailyProgressQuery(chore_repo, spin_repo)
+    spin_repo = SqlAlchemySpinSessionRepository(session, tz_name=tz)
+    query = GetDailyProgressQuery(chore_repo, spin_repo, tz_name=tz)
     return await query.execute(user_id)
 
 
@@ -185,15 +222,18 @@ async def get_daily_progress(
 async def reset_daily_wheel(
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
     """Reset today's wheel by deleting all spin sessions for the current day.
 
     Args:
         user_id: The authenticated user's UUID.
         session: Database session.
+        settings: Application settings.
     """
-    spin_repo = SqlAlchemySpinSessionRepository(session)
-    command = ResetDailyWheelCommand(spin_repo)
+    tz = settings.APP_TIMEZONE
+    spin_repo = SqlAlchemySpinSessionRepository(session, tz_name=tz)
+    command = ResetDailyWheelCommand(spin_repo, tz_name=tz)
     await command.execute(ResetDailyWheelInput(user_id=user_id))
 
 
@@ -226,18 +266,21 @@ async def get_history(
 async def get_segments(
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> list[WheelSegmentResponse]:
     """Get wheel segments with effective weights for the current hour.
 
     Args:
         user_id: The authenticated user's UUID.
         session: Database session.
+        settings: Application settings.
 
     Returns:
         List of WheelSegmentResponse DTOs.
     """
+    tz = settings.APP_TIMEZONE
     chore_repo = SqlAlchemyChoreRepository(session)
-    spin_repo = SqlAlchemySpinSessionRepository(session)
+    spin_repo = SqlAlchemySpinSessionRepository(session, tz_name=tz)
     spin_service = WheelSpinService()
-    query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service)
+    query = GetWheelSegmentsQuery(chore_repo, spin_repo, spin_service, tz_name=tz)
     return await query.execute(user_id)

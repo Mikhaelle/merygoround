@@ -83,12 +83,14 @@ class DailyProgressItem(BaseModel):
         chore_id: ID of the chore.
         completed: Number of completions today.
         skipped: Number of skips today.
+        deactivated: Number of deactivations today.
         multiplicity: Total multiplicity for the chore.
     """
 
     chore_id: uuid.UUID
     completed: int
     skipped: int
+    deactivated: int
     multiplicity: int
 
 
