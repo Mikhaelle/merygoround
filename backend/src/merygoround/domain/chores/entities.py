@@ -6,7 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from merygoround.domain.chores.value_objects import Duration, Multiplicity, TimeWeightRule
+from merygoround.domain.chores.value_objects import Duration, Multiplicity, RewardValue, REWARD_DEFAULT, TimeWeightRule
 from merygoround.domain.shared.entity import AggregateRoot
 
 
@@ -44,5 +44,6 @@ class Chore(AggregateRoot):
     estimated_duration: Duration = field(default_factory=lambda: Duration(1))
     category: str | None = None
     wheel_config: WheelConfiguration = field(default_factory=WheelConfiguration)
+    reward_value: RewardValue = field(default_factory=lambda: RewardValue(REWARD_DEFAULT))
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

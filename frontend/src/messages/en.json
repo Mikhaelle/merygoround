@@ -73,7 +73,9 @@
     "done": "Done",
     "resetDaily": "Reset Day",
     "resetDailySuccess": "Daily progress reset!",
-    "resetDailyConfirm": "Are you sure? This will reset all of today's progress."
+    "resetDailyConfirm": "Are you sure? This will reset all of today's progress.",
+    "rewardValue": "Reward",
+    "rewardValueHelp": "Value in BRL per completion (R$0.01 to R$10.00)"
   },
   "wheel": {
     "spin": "SPIN",
@@ -151,7 +153,16 @@
     "home": "Wheel",
     "chores": "Chores",
     "bucket": "Bucket",
+    "wallet": "Wallet",
     "settings": "Settings",
     "logout": "Sign Out"
+  },
+  "wallet": {
+    "title": "Wallet",
+    "subtitle": "Your earnings from completed chores",
+    "totalToday": "Earned today",
+    "totalMonth": "Earned this month",
+    "totalYear": "Earned this year",
+    "completedChoresOnly": "Only chores marked as complete count towards earnings."
   }
 }

@@ -4,10 +4,10 @@ import { useTranslations } from "next-intl";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Pencil, Trash2, Clock, Layers, Check, EyeOff, RotateCcw } from "lucide-react";
+import { Pencil, Trash2, Clock, Coins, Layers, Check, EyeOff, RotateCcw } from "lucide-react";
 import type { Chore } from "@/types/chore";
 import type { DailyProgressItem } from "@/types/wheel";
-import { formatDuration } from "@/lib/utils/format";
+import { formatBRL, formatDuration } from "@/lib/utils/format";
 
 interface ChoreCardProps {
   chore: Chore;
@@ -42,6 +42,13 @@ export function ChoreCard({ chore, progress, onEdit, onDelete, onComplete, onDea
                 {formatDuration(chore.estimated_duration_minutes)}
               </Badge>
               {chore.category && <Badge variant="secondary">{chore.category}</Badge>}
+              <Badge
+                variant="outline"
+                className="gap-1 border-emerald-300 text-emerald-700 dark:border-emerald-600 dark:text-emerald-400"
+              >
+                <Coins className="size-3" />
+                {formatBRL(chore.reward_value)}
+              </Badge>
               {multiplicity > 1 && (
                 <Badge
                   variant="outline"

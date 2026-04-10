@@ -33,3 +33,14 @@ export function formatDuration(minutes: number): string {
 export function formatHour(hour: number): string {
   return `${hour.toString().padStart(2, "0")}:00`;
 }
+
+/** Format a value as BRL currency using pt-BR locale (e.g. R$ 1,00). */
+export function formatBRL(value: string | number): string {
+  const num = typeof value === "string" ? parseFloat(value) : value;
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(num);
+}

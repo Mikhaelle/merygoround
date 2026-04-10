@@ -30,6 +30,9 @@ export function ChoreForm({ chore, onSubmit, onCancel }: ChoreFormProps) {
   const [timeWeightRules, setTimeWeightRules] = useState<TimeWeightRule[]>(
     chore?.wheel_config.time_weight_rules ?? [],
   );
+  const [rewardValue, setRewardValue] = useState<number>(
+    chore?.reward_value ? parseFloat(chore.reward_value) : 1.0,
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
@@ -44,6 +47,7 @@ export function ChoreForm({ chore, onSubmit, onCancel }: ChoreFormProps) {
         category: category.trim() || undefined,
         multiplicity,
         time_weight_rules: timeWeightRules.length > 0 ? timeWeightRules : undefined,
+        reward_value: rewardValue,
       });
     } finally {
       setIsSubmitting(false);
@@ -109,6 +113,30 @@ export function ChoreForm({ chore, onSubmit, onCancel }: ChoreFormProps) {
           value={multiplicity}
           onChange={(e) => setMultiplicity(Math.max(1, parseInt(e.target.value) || 1))}
         />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="chore-reward">{t("rewardValue")}</Label>
+          <span className="text-xs text-muted-foreground max-w-[60%] text-right">
+            {t("rewardValueHelp")}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">R$</span>
+          <Input
+            id="chore-reward"
+            type="number"
+            min={0.01}
+            max={10}
+            step={0.01}
+            value={rewardValue}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
+              if (!isNaN(v)) setRewardValue(Math.min(10, Math.max(0.01, v)));
+            }}
+          />
+        </div>
       </div>
 
       <Separator />

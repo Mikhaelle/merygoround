@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -104,3 +105,19 @@ class SpinHistoryQuery(BaseModel):
 
     page: int = Field(ge=1, default=1)
     per_page: int = Field(ge=1, le=100, default=20)
+
+
+class WalletResponse(BaseModel):
+    """Response DTO for the user's wallet summary.
+
+    Attributes:
+        total_today: Total BRL earned today.
+        total_this_month: Total BRL earned this month.
+        total_this_year: Total BRL earned this year.
+        currency: Currency code (always BRL).
+    """
+
+    total_today: Decimal
+    total_this_month: Decimal
+    total_this_year: Decimal
+    currency: str = "BRL"

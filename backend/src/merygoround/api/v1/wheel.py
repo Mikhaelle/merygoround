@@ -32,12 +32,14 @@ from merygoround.application.wheel.dtos import (
     DailyProgressItem,
     SpinHistoryResponse,
     SpinResultResponse,
+    WalletResponse,
     WheelSegmentResponse,
 )
 from merygoround.application.wheel.queries import (
     GetDailyProgressQuery,
     GetSpinHistoryInput,
     GetSpinHistoryQuery,
+    GetWalletSummaryQuery,
     GetWheelSegmentsQuery,
 )
 from merygoround.domain.wheel.services import WheelSpinService
@@ -260,6 +262,25 @@ async def get_history(
     return await query.execute(
         GetSpinHistoryInput(user_id=user_id, page=page, per_page=per_page)
     )
+
+
+@router.get("/wallet", response_model=WalletResponse)
+async def get_wallet(
+    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> WalletResponse:
+    """Get the user's wallet earnings summary for today, this month, and this year.
+
+    Args:
+        user_id: The authenticated user's UUID.
+        session: Database session.
+
+    Returns:
+        WalletResponse with total earnings broken down by period.
+    """
+    spin_repo = SqlAlchemySpinSessionRepository(session)
+    query = GetWalletSummaryQuery(spin_repo)
+    return await query.execute(user_id)
 
 
 @router.get("/segments", response_model=list[WheelSegmentResponse])

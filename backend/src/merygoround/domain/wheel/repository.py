@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 from datetime import date
+from decimal import Decimal
 
 from merygoround.domain.wheel.entities import SpinSession
 
@@ -115,4 +116,18 @@ class SpinSessionRepository(ABC):
 
         Returns:
             The updated SpinSession.
+        """
+
+    @abstractmethod
+    async def get_wallet_summary(
+        self, user_id: uuid.UUID, today: date
+    ) -> tuple[Decimal, Decimal, Decimal]:
+        """Return total completed earnings for today, this month, and this year.
+
+        Args:
+            user_id: The UUID of the user.
+            today: The reference date (used for day/month/year filtering).
+
+        Returns:
+            Tuple of (today_total, month_total, year_total) in BRL.
         """

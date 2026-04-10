@@ -14,6 +14,7 @@ export interface Chore {
   estimated_duration_minutes: number;
   category: string | null;
   wheel_config: WheelConfig;
+  reward_value: string;
   created_at: string;
   updated_at: string;
 }
@@ -24,6 +25,7 @@ export interface CreateChoreRequest {
   category?: string;
   multiplicity?: number;
   time_weight_rules?: TimeWeightRule[];
+  reward_value?: number;
 }
 
 export interface UpdateChoreRequest {
@@ -32,4 +34,5 @@ export interface UpdateChoreRequest {
   category?: string;
   multiplicity?: number;
   time_weight_rules?: TimeWeightRule[];
+  reward_value?: number;
 }

@@ -17,7 +17,7 @@ from merygoround.application.chores.dtos import (
 from merygoround.application.shared.use_case import BaseCommand
 from merygoround.domain.chores.entities import Chore, WheelConfiguration
 from merygoround.domain.chores.exceptions import ChoreNotFoundError
-from merygoround.domain.chores.value_objects import Duration, Multiplicity, TimeWeightRule
+from merygoround.domain.chores.value_objects import Duration, Multiplicity, RewardValue, TimeWeightRule
 from merygoround.domain.shared.exceptions import AuthorizationError
 
 if TYPE_CHECKING:
@@ -79,6 +79,7 @@ def _chore_to_response(chore: Chore) -> ChoreResponse:
                 for r in chore.wheel_config.time_weight_rules
             ],
         ),
+        reward_value=chore.reward_value.value,
         created_at=chore.created_at,
         updated_at=chore.updated_at,
     )
@@ -118,6 +119,7 @@ class CreateChoreCommand(BaseCommand[CreateChoreInput, ChoreResponse]):
                 multiplicity=Multiplicity(req.multiplicity),
                 time_weight_rules=time_rules,
             ),
+            reward_value=RewardValue(req.reward_value),
         )
 
         chore = await self._chore_repo.add(chore)
@@ -168,6 +170,8 @@ class UpdateChoreCommand(BaseCommand[UpdateChoreInput, ChoreResponse]):
             chore.wheel_config.time_weight_rules = [
                 TimeWeightRule(hour=r.hour, weight=r.weight) for r in req.time_weight_rules
             ]
+        if req.reward_value is not None:
+            chore.reward_value = RewardValue(req.reward_value)
 
         chore.updated_at = datetime.now(timezone.utc)
         chore = await self._chore_repo.update(chore)

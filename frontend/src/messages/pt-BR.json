@@ -73,7 +73,9 @@
     "done": "Feito",
     "resetDaily": "Resetar Dia",
     "resetDailySuccess": "Progresso do dia resetado!",
-    "resetDailyConfirm": "Tem certeza? Isso vai resetar todo o progresso de hoje."
+    "resetDailyConfirm": "Tem certeza? Isso vai resetar todo o progresso de hoje.",
+    "rewardValue": "Recompensa",
+    "rewardValueHelp": "Valor em reais por conclusao (R$0,01 a R$10,00)"
   },
   "wheel": {
     "spin": "GIRAR",
@@ -151,7 +153,16 @@
     "home": "Roleta",
     "chores": "Tarefas",
     "bucket": "Balde",
+    "wallet": "Carteira",
     "settings": "Config",
     "logout": "Sair"
+  },
+  "wallet": {
+    "title": "Carteira",
+    "subtitle": "Seus ganhos com tarefas concluidas",
+    "totalToday": "Ganho hoje",
+    "totalMonth": "Ganho este mes",
+    "totalYear": "Ganho este ano",
+    "completedChoresOnly": "Apenas tarefas marcadas como concluidas contam para os ganhos."
   }
 }

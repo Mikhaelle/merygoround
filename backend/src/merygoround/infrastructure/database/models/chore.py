@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,3 +41,4 @@ class ChoreModel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     multiplicity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     time_weight_rules: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    reward_value: Mapped[Decimal] = mapped_column(Numeric(6, 2), nullable=False, default=Decimal("1.00"))

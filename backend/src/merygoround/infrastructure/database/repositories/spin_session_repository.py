@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, time, timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import Date, and_, cast, delete, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from merygoround.domain.wheel.entities import SpinSession, SpinStatus
 from merygoround.domain.wheel.repository import SpinSessionRepository
+from merygoround.infrastructure.database.models.chore import ChoreModel
 from merygoround.infrastructure.database.models.wheel import SpinSessionModel
 
 
@@ -243,6 +245,48 @@ class SqlAlchemySpinSessionRepository(SpinSessionRepository):
             model.completed_at = session.completed_at
             await self._session.flush()
         return session
+
+    async def get_wallet_summary(
+        self, user_id: uuid.UUID, today: date
+    ) -> tuple[Decimal, Decimal, Decimal]:
+        """Return total completed earnings for today, this month, and this year.
+
+        Args:
+            user_id: The UUID of the user.
+            today: The reference date for day/month/year filtering.
+
+        Returns:
+            Tuple of (today_total, month_total, year_total) in BRL.
+        """
+
+        def _sum_stmt(*extra_filters):
+            return (
+                select(func.coalesce(func.sum(ChoreModel.reward_value), Decimal("0.00")))
+                .select_from(SpinSessionModel)
+                .join(ChoreModel, SpinSessionModel.selected_chore_id == ChoreModel.id)
+                .where(
+                    SpinSessionModel.user_id == user_id,
+                    SpinSessionModel.status == "COMPLETED",
+                    *extra_filters,
+                )
+            )
+
+        day_q = _sum_stmt(cast(SpinSessionModel.completed_at, Date) == today)
+        month_q = _sum_stmt(
+            extract("year", SpinSessionModel.completed_at) == today.year,
+            extract("month", SpinSessionModel.completed_at) == today.month,
+        )
+        year_q = _sum_stmt(extract("year", SpinSessionModel.completed_at) == today.year)
+
+        day_r = await self._session.execute(day_q)
+        month_r = await self._session.execute(month_q)
+        year_r = await self._session.execute(year_q)
+
+        return (
+            Decimal(str(day_r.scalar_one())),
+            Decimal(str(month_r.scalar_one())),
+            Decimal(str(year_r.scalar_one())),
+        )
 
     def _to_domain(self, model: SpinSessionModel) -> SpinSession:
         """Map a SpinSessionModel ORM instance to a SpinSession domain entity."""

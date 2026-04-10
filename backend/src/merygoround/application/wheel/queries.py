@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from typing import TYPE_CHECKING
 
 from merygoround.application.shared.timezone import get_local_now
@@ -13,6 +14,7 @@ from merygoround.application.wheel.dtos import (
     DailyProgressItem,
     SpinHistoryItem,
     SpinHistoryResponse,
+    WalletResponse,
     WheelSegmentResponse,
 )
 
@@ -210,4 +212,34 @@ class GetSpinHistoryQuery(BaseQuery[GetSpinHistoryInput, SpinHistoryResponse]):
             total=total,
             page=input_data.page,
             per_page=input_data.per_page,
+        )
+
+
+class GetWalletSummaryQuery(BaseQuery[uuid.UUID, WalletResponse]):
+    """Returns the user's wallet earnings summary (today, month, year).
+
+    Args:
+        spin_repo: Spin session repository for earnings aggregation.
+    """
+
+    def __init__(self, spin_repo: SpinSessionRepository) -> None:
+        self._spin_repo = spin_repo
+
+    async def execute(self, input_data: uuid.UUID) -> WalletResponse:
+        """Compute total BRL earnings for today, this month, and this year.
+
+        Args:
+            input_data: The UUID of the authenticated user.
+
+        Returns:
+            WalletResponse with the three period totals.
+        """
+        today = date.today()
+        total_today, total_month, total_year = await self._spin_repo.get_wallet_summary(
+            input_data, today
+        )
+        return WalletResponse(
+            total_today=total_today,
+            total_this_month=total_month,
+            total_this_year=total_year,
         )

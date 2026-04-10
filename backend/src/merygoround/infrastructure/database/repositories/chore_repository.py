@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from merygoround.domain.chores.entities import Chore, WheelConfiguration
 from merygoround.domain.chores.repository import ChoreRepository
-from merygoround.domain.chores.value_objects import Duration, Multiplicity, TimeWeightRule
+from merygoround.domain.chores.value_objects import Duration, Multiplicity, RewardValue, TimeWeightRule
 from merygoround.infrastructure.database.models.chore import ChoreModel
 
 
@@ -83,6 +84,7 @@ class SqlAlchemyChoreRepository(ChoreRepository):
                 {"hour": r.hour, "weight": r.weight}
                 for r in chore.wheel_config.time_weight_rules
             ]
+            model.reward_value = chore.reward_value.value
             model.updated_at = chore.updated_at
             await self._session.flush()
         return chore
@@ -113,6 +115,7 @@ class SqlAlchemyChoreRepository(ChoreRepository):
                 multiplicity=Multiplicity(model.multiplicity),
                 time_weight_rules=time_rules,
             ),
+            reward_value=RewardValue(Decimal(str(model.reward_value))),
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
@@ -130,6 +133,7 @@ class SqlAlchemyChoreRepository(ChoreRepository):
                 {"hour": r.hour, "weight": r.weight}
                 for r in chore.wheel_config.time_weight_rules
             ],
+            reward_value=chore.reward_value.value,
             created_at=chore.created_at,
             updated_at=chore.updated_at,
         )

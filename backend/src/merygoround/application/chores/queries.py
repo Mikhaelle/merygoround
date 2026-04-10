@@ -34,6 +34,7 @@ def _chore_to_response(chore: Chore) -> ChoreResponse:
                 for r in chore.wheel_config.time_weight_rules
             ],
         ),
+        reward_value=chore.reward_value.value,
         created_at=chore.created_at,
         updated_at=chore.updated_at,
     )

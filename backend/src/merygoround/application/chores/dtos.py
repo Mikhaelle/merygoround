@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -42,6 +43,7 @@ class CreateChoreRequest(BaseModel):
         category: Optional category label.
         multiplicity: Wheel slot count (1-3, default 1).
         time_weight_rules: Optional time-weight rules.
+        reward_value: BRL reward for completing the chore (R$0.01–R$10.00).
     """
 
     name: str = Field(min_length=1, max_length=200)
@@ -49,6 +51,7 @@ class CreateChoreRequest(BaseModel):
     category: str | None = None
     multiplicity: int = Field(ge=1, default=1)
     time_weight_rules: list[TimeWeightRuleDTO] = Field(default_factory=list)
+    reward_value: Decimal = Field(default=Decimal("1.00"), ge=Decimal("0.01"), le=Decimal("10.00"))
 
 
 class UpdateChoreRequest(BaseModel):
@@ -62,6 +65,7 @@ class UpdateChoreRequest(BaseModel):
         category: Category label.
         multiplicity: Wheel slot count (1-3).
         time_weight_rules: Time-weight rules.
+        reward_value: BRL reward for completing the chore (R$0.01–R$10.00).
     """
 
     name: str | None = Field(default=None, min_length=1, max_length=200)
@@ -69,6 +73,7 @@ class UpdateChoreRequest(BaseModel):
     category: str | None = None
     multiplicity: int | None = Field(default=None, ge=1)
     time_weight_rules: list[TimeWeightRuleDTO] | None = None
+    reward_value: Decimal | None = Field(default=None, ge=Decimal("0.01"), le=Decimal("10.00"))
 
 
 class ChoreResponse(BaseModel):
@@ -80,6 +85,7 @@ class ChoreResponse(BaseModel):
         estimated_duration_minutes: Duration in minutes.
         category: Category label (if any).
         wheel_config: Wheel configuration.
+        reward_value: BRL reward for completing the chore.
         created_at: Creation timestamp.
         updated_at: Last modification timestamp.
     """
@@ -89,6 +95,7 @@ class ChoreResponse(BaseModel):
     estimated_duration_minutes: int
     category: str | None
     wheel_config: WheelConfigDTO
+    reward_value: Decimal
     created_at: datetime
     updated_at: datetime
 

@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 
 from merygoround.domain.shared.exceptions import ValidationError
 
 ALLOWED_DURATIONS = (5, 10)
 MAX_TIME_WEIGHT = 3.0
+REWARD_MIN = Decimal("0.01")
+REWARD_MAX = Decimal("10.00")
+REWARD_DEFAULT = Decimal("1.00")
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,27 @@ class Multiplicity:
     def __post_init__(self) -> None:
         if not isinstance(self.value, int) or self.value < 1:
             raise ValidationError(f"Multiplicity must be >= 1, got {self.value}")
+
+
+@dataclass(frozen=True)
+class RewardValue:
+    """Monetary reward granted when the chore is completed (BRL).
+
+    Must be a Decimal between R$0.01 and R$10.00.
+
+    Args:
+        value: Reward amount in BRL.
+    """
+
+    value: Decimal
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.value, Decimal):
+            object.__setattr__(self, "value", Decimal(str(self.value)))
+        if self.value < REWARD_MIN or self.value > REWARD_MAX:
+            raise ValidationError(
+                f"RewardValue must be between {REWARD_MIN} and {REWARD_MAX}, got {self.value}"
+            )
 
 
 @dataclass(frozen=True)
