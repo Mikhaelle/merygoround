@@ -96,7 +96,8 @@
     "spinSkipped": "Chore skipped.",
     "resetDaily": "Reset Day",
     "resetDailyConfirm": "Are you sure? This will clear all of today's spins.",
-    "resetDailySuccess": "Daily wheel reset!"
+    "resetDailySuccess": "Daily wheel reset!",
+    "actionError": "Something went wrong. Please try again."
   },
   "bucket": {
     "title": "Adult Bucket",

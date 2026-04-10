@@ -93,14 +93,16 @@ class GetWheelSegmentsQuery(BaseQuery[uuid.UUID, list[WheelSegmentResponse]]):
                 created_at=chore.created_at,
                 updated_at=chore.updated_at,
             )
+            effective_weight = self._spin_service.get_effective_weight(adjusted, local_now.hour)
+            if effective_weight == 0:
+                continue
+
             segments.append(
                 WheelSegmentResponse(
                     chore_id=adjusted.id,
                     name=adjusted.name,
                     color=_generate_color(adjusted.name),
-                    effective_weight=self._spin_service.get_effective_weight(
-                        adjusted, local_now.hour
-                    ),
+                    effective_weight=effective_weight,
                 )
             )
 

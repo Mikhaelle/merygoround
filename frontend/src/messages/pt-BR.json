@@ -96,7 +96,8 @@
     "spinSkipped": "Tarefa pulada.",
     "resetDaily": "Resetar Dia",
     "resetDailyConfirm": "Tem certeza? Isso vai limpar todos os giros de hoje.",
-    "resetDailySuccess": "Roleta do dia resetada!"
+    "resetDailySuccess": "Roleta do dia resetada!",
+    "actionError": "Algo deu errado. Tente novamente."
   },
   "bucket": {
     "title": "Balde Adulto",

@@ -41,11 +41,12 @@ export function useWheel() {
     setIsSpinning(true);
     try {
       const session = await wheelApi.spin();
+      await fetchSegments();
       return session;
     } finally {
       setIsSpinning(false);
     }
-  }, []);
+  }, [fetchSegments]);
 
   const completeSession = useCallback(
     async (sessionId: string) => {

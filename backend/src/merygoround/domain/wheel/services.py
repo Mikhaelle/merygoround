@@ -42,7 +42,12 @@ class WheelSpinService:
             self._calculate_effective_weight(chore, current_hour) for chore in chores
         ]
 
-        selected = random.choices(chores, weights=weights, k=1)
+        available = [(c, w) for c, w in zip(chores, weights) if w > 0]
+        if not available:
+            raise NoChoresAvailableError()
+
+        filtered_chores, filtered_weights = zip(*available)
+        selected = random.choices(list(filtered_chores), weights=list(filtered_weights), k=1)
         return selected[0]
 
     def get_effective_weight(self, chore: Chore, current_hour: int) -> float:

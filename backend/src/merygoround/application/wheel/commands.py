@@ -107,6 +107,7 @@ class SpinWheelCommand(BaseCommand[SpinWheelInput, SpinResultResponse]):
                     name=chore.name,
                     estimated_duration=chore.estimated_duration,
                     category=chore.category,
+                    reward_value=chore.reward_value,
                     wheel_config=WheelConfiguration(
                         multiplicity=Multiplicity(remaining),
                         time_weight_rules=chore.wheel_config.time_weight_rules,
@@ -133,6 +134,7 @@ class SpinWheelCommand(BaseCommand[SpinWheelInput, SpinResultResponse]):
             name=selected.name,
             estimated_duration_minutes=selected.estimated_duration.value,
             category=selected.category,
+            reward_value=selected.reward_value.value,
             wheel_config=WheelConfigDTO(
                 multiplicity=selected.wheel_config.multiplicity.value,
                 time_weight_rules=[

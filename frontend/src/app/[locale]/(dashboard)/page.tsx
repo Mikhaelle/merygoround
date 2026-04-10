@@ -63,7 +63,7 @@ export default function WheelPage() {
       setShowResult(false);
       setCurrentSession(null);
     } catch {
-      toast.error(t("noChores"));
+      toast.error(t("actionError"));
     } finally {
       setIsActionLoading(false);
     }
@@ -78,7 +78,7 @@ export default function WheelPage() {
       setShowResult(false);
       setCurrentSession(null);
     } catch {
-      toast.error(t("noChores"));
+      toast.error(t("actionError"));
     } finally {
       setIsActionLoading(false);
     }
@@ -90,7 +90,7 @@ export default function WheelPage() {
         await completeSession(sessionId);
         toast.success(t("spinSuccess"));
       } catch {
-        toast.error(t("noChores"));
+        toast.error(t("actionError"));
       }
     },
     [completeSession, t],
@@ -102,7 +102,7 @@ export default function WheelPage() {
         await skipSession(sessionId);
         toast.info(t("spinSkipped"));
       } catch {
-        toast.error(t("noChores"));
+        toast.error(t("actionError"));
       }
     },
     [skipSession, t],
@@ -115,7 +115,7 @@ export default function WheelPage() {
       setCurrentSession(null);
       setShowResult(false);
     } catch {
-      toast.error(t("noChores"));
+      toast.error(t("actionError"));
     }
   }, [resetDaily, t]);
 
