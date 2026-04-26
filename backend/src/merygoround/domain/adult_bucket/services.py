@@ -5,11 +5,12 @@ from __future__ import annotations
 import random
 from datetime import UTC, datetime
 
-from merygoround.domain.adult_bucket.entities import BucketItem, KanbanStatus
+from merygoround.domain.adult_bucket.entities import BucketItem, BucketKind, KanbanStatus
 from merygoround.domain.adult_bucket.exceptions import (
     InvalidMaxInProgressError,
     MaxInProgressReachedError,
     NoBucketItemsError,
+    SameKindTransferError,
 )
 
 
@@ -59,6 +60,42 @@ class BucketKanbanService:
 
         item.status = new_status
         item.updated_at = now
+        return item
+
+    def transfer(
+        self,
+        item: BucketItem,
+        target_kind: BucketKind,
+        destination_in_progress_count: int,
+        destination_max_in_progress: int,
+    ) -> BucketItem:
+        """Move a bucket item to a different board (kind), preserving its status.
+
+        Args:
+            item: The BucketItem to transfer.
+            target_kind: Destination board.
+            destination_in_progress_count: IN_PROGRESS count on the destination
+                board (used only when the item is currently IN_PROGRESS).
+            destination_max_in_progress: Max IN_PROGRESS on the destination board.
+
+        Returns:
+            The mutated BucketItem now belonging to ``target_kind``.
+
+        Raises:
+            SameKindTransferError: If ``target_kind`` matches the current kind.
+            MaxInProgressReachedError: If transferring an IN_PROGRESS item would
+                exceed the destination's limit.
+        """
+        if item.kind == target_kind:
+            raise SameKindTransferError()
+        if (
+            item.status == KanbanStatus.IN_PROGRESS
+            and destination_in_progress_count >= destination_max_in_progress
+        ):
+            raise MaxInProgressReachedError(destination_max_in_progress)
+
+        item.kind = target_kind
+        item.updated_at = datetime.now(UTC)
         return item
 
     def draw_suggestion(

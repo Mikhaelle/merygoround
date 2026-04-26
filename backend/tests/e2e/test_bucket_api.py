@@ -243,3 +243,72 @@ class TestBucketKanbanApi:
             headers=auth_headers,
         )
         assert resp.status_code == 404
+
+    async def test_transfer_adult_to_happy(
+        self, client: AsyncClient, seed_user, auth_headers: dict[str, str]
+    ) -> None:
+        """Transferring an item changes its kind and moves it to the other board."""
+        item = await _create_item(client, auth_headers, "Cross-board task")
+        resp = await client.put(
+            f"/api/v1/bucket/adult/items/{item['id']}/transfer",
+            json={"target_kind": "happy"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["kind"] == "happy"
+        assert body["status"] == "to_do"
+
+        adult_list = (
+            await client.get("/api/v1/bucket/adult/items", headers=auth_headers)
+        ).json()
+        happy_list = (
+            await client.get("/api/v1/bucket/happy/items", headers=auth_headers)
+        ).json()
+        assert all(i["id"] != item["id"] for i in adult_list)
+        assert any(i["id"] == item["id"] for i in happy_list)
+
+    async def test_transfer_to_same_kind_returns_400(
+        self, client: AsyncClient, seed_user, auth_headers: dict[str, str]
+    ) -> None:
+        """Transferring to the same kind returns 400."""
+        item = await _create_item(client, auth_headers, "Stays adult")
+        resp = await client.put(
+            f"/api/v1/bucket/adult/items/{item['id']}/transfer",
+            json={"target_kind": "adult"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    async def test_transfer_in_progress_to_full_destination_returns_409(
+        self,
+        client: AsyncClient,
+        seed_user,
+        auth_headers: dict[str, str],
+    ) -> None:
+        """Transferring an IN_PROGRESS item to a full destination returns 409."""
+        for i in range(2):
+            r = await client.post(
+                "/api/v1/bucket/happy/items",
+                json={"name": f"happy {i}"},
+                headers=auth_headers,
+            )
+            happy_id = r.json()["id"]
+            await client.put(
+                f"/api/v1/bucket/happy/items/{happy_id}/move",
+                json={"status": "in_progress"},
+                headers=auth_headers,
+            )
+
+        adult_item = await _create_item(client, auth_headers, "Adult in progress")
+        await client.put(
+            f"/api/v1/bucket/adult/items/{adult_item['id']}/move",
+            json={"status": "in_progress"},
+            headers=auth_headers,
+        )
+        resp = await client.put(
+            f"/api/v1/bucket/adult/items/{adult_item['id']}/transfer",
+            json={"target_kind": "happy"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409

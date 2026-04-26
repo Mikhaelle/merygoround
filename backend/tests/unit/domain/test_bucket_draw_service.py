@@ -6,11 +6,12 @@ import uuid
 
 import pytest
 
-from merygoround.domain.adult_bucket.entities import BucketItem, KanbanStatus
+from merygoround.domain.adult_bucket.entities import BucketItem, BucketKind, KanbanStatus
 from merygoround.domain.adult_bucket.exceptions import (
     InvalidMaxInProgressError,
     MaxInProgressReachedError,
     NoBucketItemsError,
+    SameKindTransferError,
 )
 from merygoround.domain.adult_bucket.services import (
     BucketKanbanService,
@@ -143,6 +144,68 @@ class TestBucketKanbanServiceMove:
         )
 
         assert result.started_at == first_started
+
+
+class TestBucketKanbanServiceTransfer:
+    """Test suite for BucketKanbanService.transfer."""
+
+    def test_transfer_changes_kind(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """Transferring switches the item to the destination board."""
+        item = _make_item(user_id, status=KanbanStatus.TO_DO)
+        item.kind = BucketKind.ADULT
+
+        result = kanban_service.transfer(
+            item,
+            target_kind=BucketKind.HAPPY,
+            destination_in_progress_count=0,
+            destination_max_in_progress=2,
+        )
+
+        assert result.kind == BucketKind.HAPPY
+
+    def test_transfer_to_same_kind_raises(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """Transferring to the same kind raises SameKindTransferError."""
+        item = _make_item(user_id, status=KanbanStatus.TO_DO)
+        item.kind = BucketKind.ADULT
+        with pytest.raises(SameKindTransferError):
+            kanban_service.transfer(
+                item,
+                target_kind=BucketKind.ADULT,
+                destination_in_progress_count=0,
+                destination_max_in_progress=2,
+            )
+
+    def test_transfer_in_progress_blocked_when_destination_full(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """An IN_PROGRESS item can't be transferred when the destination is full."""
+        item = _make_item(user_id, status=KanbanStatus.IN_PROGRESS)
+        item.kind = BucketKind.ADULT
+        with pytest.raises(MaxInProgressReachedError):
+            kanban_service.transfer(
+                item,
+                target_kind=BucketKind.HAPPY,
+                destination_in_progress_count=2,
+                destination_max_in_progress=2,
+            )
+
+    def test_transfer_keeps_status(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """Transferring preserves the item's status."""
+        item = _make_item(user_id, status=KanbanStatus.BLOCKED)
+        item.kind = BucketKind.ADULT
+        result = kanban_service.transfer(
+            item,
+            target_kind=BucketKind.HAPPY,
+            destination_in_progress_count=0,
+            destination_max_in_progress=2,
+        )
+        assert result.status == KanbanStatus.BLOCKED
 
 
 class TestBucketKanbanServiceDrawSuggestion:

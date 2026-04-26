@@ -44,8 +44,11 @@ export function BucketBoardPage({ kind, titleNamespace }: BucketBoardPageProps) 
     updateItem,
     deleteItem,
     moveItem,
+    transferItem,
     drawSuggestion,
   } = useBucket(kind);
+
+  const otherKind: BucketKind = kind === "adult" ? "happy" : "adult";
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<BucketItem | null>(null);
@@ -127,6 +130,23 @@ export function BucketBoardPage({ kind, titleNamespace }: BucketBoardPageProps) 
     [moveItem, t, tCommon, settings.max_in_progress],
   );
 
+  const handleTransfer = useCallback(
+    async (item: BucketItem) => {
+      try {
+        await transferItem(item.id, otherKind);
+        toast.success(t(`transferredTo.${otherKind}`));
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 409) {
+          toast.error(t("transferDestinationFull"));
+        } else {
+          toast.error(tCommon("error"));
+        }
+      }
+    },
+    [transferItem, otherKind, t, tCommon],
+  );
+
   const handleDraw = useCallback(async () => {
     setIsDrawing(true);
     try {
@@ -195,7 +215,9 @@ export function BucketBoardPage({ kind, titleNamespace }: BucketBoardPageProps) 
           items={items}
           highlightedItemId={highlightedItemId}
           maxInProgress={settings.max_in_progress}
+          otherKind={otherKind}
           onMove={handleMove}
+          onTransfer={handleTransfer}
           onEdit={handleEdit}
           onDelete={(i) => setDeleteTarget(i)}
         />

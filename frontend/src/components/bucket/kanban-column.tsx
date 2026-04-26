@@ -4,14 +4,16 @@ import { useTranslations } from "next-intl";
 import { AnimatePresence } from "framer-motion";
 import { useDroppable } from "@dnd-kit/core";
 import { KanbanCard } from "./kanban-card";
-import type { BucketItem, KanbanStatus } from "@/types/bucket";
+import type { BucketItem, BucketKind, KanbanStatus } from "@/types/bucket";
 
 interface KanbanColumnProps {
   status: KanbanStatus;
   items: BucketItem[];
   highlightedItemId: string | null;
   inProgressLimit: { current: number; max: number };
+  otherKind: BucketKind;
   onMove: (item: BucketItem, target: KanbanStatus) => void;
+  onTransfer: (item: BucketItem) => void;
   onEdit: (item: BucketItem) => void;
   onDelete: (item: BucketItem) => void;
 }
@@ -29,7 +31,9 @@ export function KanbanColumn({
   items,
   highlightedItemId,
   inProgressLimit,
+  otherKind,
   onMove,
+  onTransfer,
   onEdit,
   onDelete,
 }: KanbanColumnProps) {
@@ -90,7 +94,9 @@ export function KanbanColumn({
                 item={item}
                 isHighlighted={item.id === highlightedItemId}
                 isMoveDisabled={isMoveDisabled}
+                otherKind={otherKind}
                 onMove={onMove}
+                onTransfer={onTransfer}
                 onEdit={onEdit}
                 onDelete={onDelete}
               />

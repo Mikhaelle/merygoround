@@ -16,6 +16,8 @@ from merygoround.application.adult_bucket.commands import (
     DeleteBucketItemInput,
     MoveBucketItemCommand,
     MoveBucketItemInput,
+    TransferBucketItemCommand,
+    TransferBucketItemInput,
     UpdateBucketItemCommand,
     UpdateBucketItemInput,
     UpdateBucketSettingsCommand,
@@ -28,6 +30,7 @@ from merygoround.application.adult_bucket.dtos import (
     CreateBucketItemRequest,
     DrawSuggestionResponse,
     MoveBucketItemRequest,
+    TransferBucketItemRequest,
     UpdateBucketItemRequest,
     UpdateBucketSettingsRequest,
 )
@@ -136,6 +139,28 @@ async def move_item(
     command = MoveBucketItemCommand(item_repo, settings_repo, BucketKanbanService())
     return await command.execute(
         MoveBucketItemInput(
+            user_id=user_id,
+            kind=_to_kind(kind),
+            item_id=item_id,
+            request=body,
+        )
+    )
+
+
+@router.put("/{kind}/items/{item_id}/transfer", response_model=BucketItemResponse)
+async def transfer_item(
+    kind: _KindPath,
+    item_id: uuid.UUID,
+    body: TransferBucketItemRequest,
+    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BucketItemResponse:
+    """Transfer an item to a different board (adult <-> happy)."""
+    item_repo = SqlAlchemyBucketItemRepository(session)
+    settings_repo = SqlAlchemyBucketSettingsRepository(session)
+    command = TransferBucketItemCommand(item_repo, settings_repo, BucketKanbanService())
+    return await command.execute(
+        TransferBucketItemInput(
             user_id=user_id,
             kind=_to_kind(kind),
             item_id=item_id,

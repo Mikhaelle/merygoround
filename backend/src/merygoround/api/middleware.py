@@ -11,6 +11,7 @@ from merygoround.domain.adult_bucket.exceptions import (
     InvalidMaxInProgressError,
     MaxInProgressReachedError,
     NoBucketItemsError,
+    SameKindTransferError,
 )
 from merygoround.domain.chores.exceptions import ChoreNotFoundError
 from merygoround.domain.identity.exceptions import (
@@ -48,6 +49,7 @@ _BAD_REQUEST_EXCEPTIONS = (
     NoBucketItemsError,
     NoChoresAvailableError,
     InvalidMaxInProgressError,
+    SameKindTransferError,
 )
 
 _UNAUTHORIZED_EXCEPTIONS = (

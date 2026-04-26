@@ -52,6 +52,19 @@ export async function moveItem(
   return response.data;
 }
 
+/** Transfer a bucket item to the other board (adult <-> happy). */
+export async function transferItem(
+  kind: BucketKind,
+  id: string,
+  target_kind: BucketKind,
+): Promise<BucketItem> {
+  const response = await apiClient.put<BucketItem>(
+    `/bucket/${kind}/items/${id}/transfer`,
+    { target_kind },
+  );
+  return response.data;
+}
+
 /** Get a random TO_DO item suggestion (does not change state). */
 export async function drawSuggestion(kind: BucketKind): Promise<DrawSuggestion> {
   const response = await apiClient.post<DrawSuggestion>(`/bucket/${kind}/draw`);

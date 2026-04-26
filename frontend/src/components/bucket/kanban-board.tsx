@@ -13,14 +13,16 @@ import {
 } from "@dnd-kit/core";
 import { KanbanColumn } from "./kanban-column";
 import { KanbanCard } from "./kanban-card";
-import type { BucketItem, KanbanStatus } from "@/types/bucket";
+import type { BucketItem, BucketKind, KanbanStatus } from "@/types/bucket";
 import { KANBAN_COLUMNS } from "@/types/bucket";
 
 interface KanbanBoardProps {
   items: BucketItem[];
   highlightedItemId: string | null;
   maxInProgress: number;
+  otherKind: BucketKind;
   onMove: (item: BucketItem, target: KanbanStatus) => void;
+  onTransfer: (item: BucketItem) => void;
   onEdit: (item: BucketItem) => void;
   onDelete: (item: BucketItem) => void;
 }
@@ -30,7 +32,9 @@ export function KanbanBoard({
   items,
   highlightedItemId,
   maxInProgress,
+  otherKind,
   onMove,
+  onTransfer,
   onEdit,
   onDelete,
 }: KanbanBoardProps) {
@@ -78,7 +82,9 @@ export function KanbanBoard({
             items={grouped.get(status) ?? []}
             highlightedItemId={highlightedItemId}
             inProgressLimit={{ current: inProgressCount, max: maxInProgress }}
+            otherKind={otherKind}
             onMove={onMove}
+            onTransfer={onTransfer}
             onEdit={onEdit}
             onDelete={onDelete}
           />
@@ -91,7 +97,9 @@ export function KanbanBoard({
               item={activeItem}
               isHighlighted={false}
               isMoveDisabled={() => true}
+              otherKind={otherKind}
               onMove={() => {}}
+              onTransfer={() => {}}
               onEdit={() => {}}
               onDelete={() => {}}
               isOverlay

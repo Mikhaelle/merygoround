@@ -150,7 +150,16 @@
       "in_progress": "Moved to In Progress",
       "blocked": "Moved to Blocked",
       "done": "Moved to Done"
-    }
+    },
+    "transferTo": {
+      "adult": "Move to Adult Bucket",
+      "happy": "Move to Happy Bucket"
+    },
+    "transferredTo": {
+      "adult": "Moved to Adult Bucket",
+      "happy": "Moved to Happy Bucket"
+    },
+    "transferDestinationFull": "Destination bucket is at IN_PROGRESS limit. Move or finish one there first."
   },
   "settings": {
     "title": "Settings",

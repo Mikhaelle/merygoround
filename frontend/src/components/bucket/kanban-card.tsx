@@ -12,16 +12,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { GripVertical, MoreHorizontal, Pencil, Trash2, Sparkles } from "lucide-react";
+import {
+  ArrowLeftRight,
+  GripVertical,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Sparkles,
+} from "lucide-react";
 import { motion } from "framer-motion";
-import type { BucketItem, KanbanStatus } from "@/types/bucket";
+import type { BucketItem, BucketKind, KanbanStatus } from "@/types/bucket";
 import { KANBAN_COLUMNS } from "@/types/bucket";
 
 interface KanbanCardProps {
   item: BucketItem;
   isHighlighted: boolean;
   isMoveDisabled: (target: KanbanStatus) => boolean;
+  otherKind: BucketKind;
   onMove: (item: BucketItem, target: KanbanStatus) => void;
+  onTransfer: (item: BucketItem) => void;
   onEdit: (item: BucketItem) => void;
   onDelete: (item: BucketItem) => void;
   /** When true the card is rendered without DnD bindings (for the drag overlay). */
@@ -33,7 +42,9 @@ export function KanbanCard({
   item,
   isHighlighted,
   isMoveDisabled,
+  otherKind,
   onMove,
+  onTransfer,
   onEdit,
   onDelete,
   isOverlay = false,
@@ -106,6 +117,11 @@ export function KanbanCard({
                     {t(`moveTo.${target}`)}
                   </DropdownMenuItem>
                 ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => onTransfer(item)}>
+                  <ArrowLeftRight className="size-3.5" />
+                  {t(`transferTo.${otherKind}`)}
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => onEdit(item)}>
                   <Pencil className="size-3.5" />

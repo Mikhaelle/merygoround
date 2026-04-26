@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from merygoround.application.adult_bucket.dtos import (
         CreateBucketItemRequest,
         MoveBucketItemRequest,
+        TransferBucketItemRequest,
         UpdateBucketItemRequest,
         UpdateBucketSettingsRequest,
     )
@@ -92,6 +93,16 @@ class MoveBucketItemInput:
     kind: BucketKind
     item_id: uuid.UUID
     request: MoveBucketItemRequest
+
+
+@dataclass
+class TransferBucketItemInput:
+    """Input for TransferBucketItemCommand."""
+
+    user_id: uuid.UUID
+    kind: BucketKind
+    item_id: uuid.UUID
+    request: TransferBucketItemRequest
 
 
 @dataclass
@@ -220,6 +231,59 @@ class MoveBucketItemCommand(BaseCommand[MoveBucketItemInput, BucketItemResponse]
             new_status=new_status,
             in_progress_count=in_progress_count,
             max_in_progress=max_in_progress,
+        )
+        item = await self._item_repo.update(item)
+        return _item_to_response(item)
+
+
+class TransferBucketItemCommand(BaseCommand[TransferBucketItemInput, BucketItemResponse]):
+    """Transfers a bucket item to a different board (kind), keeping its status."""
+
+    def __init__(
+        self,
+        item_repo: BucketItemRepository,
+        settings_repo: BucketSettingsRepository,
+        kanban_service: BucketKanbanService,
+    ) -> None:
+        self._item_repo = item_repo
+        self._settings_repo = settings_repo
+        self._kanban_service = kanban_service
+
+    async def execute(self, input_data: TransferBucketItemInput) -> BucketItemResponse:
+        """Validate ownership and destination max_in_progress, then transfer.
+
+        Raises:
+            BucketItemNotFoundError: If the item does not exist on the source board.
+            AuthorizationError: If the user does not own the item.
+            SameKindTransferError: If source and destination kinds match.
+            MaxInProgressReachedError: If transferring an IN_PROGRESS item would
+                exceed the destination board's limit.
+        """
+        item = _ensure_owner_and_kind(
+            await self._item_repo.get_by_id(input_data.item_id),
+            input_data.user_id,
+            input_data.kind,
+            input_data.item_id,
+        )
+        target_kind = BucketKind(input_data.request.target_kind)
+
+        destination_settings = await self._settings_repo.get_by_user_and_kind(
+            input_data.user_id, target_kind
+        )
+        destination_max = (
+            destination_settings.max_in_progress
+            if destination_settings is not None
+            else DEFAULT_MAX_IN_PROGRESS
+        )
+        destination_in_progress = await self._item_repo.count_in_progress(
+            input_data.user_id, target_kind
+        )
+
+        item = self._kanban_service.transfer(
+            item,
+            target_kind=target_kind,
+            destination_in_progress_count=destination_in_progress,
+            destination_max_in_progress=destination_max,
         )
         item = await self._item_repo.update(item)
         return _item_to_response(item)

@@ -33,6 +33,13 @@ class InvalidMaxInProgressError(DomainException):
         super().__init__("max_in_progress must be a positive integer.")
 
 
+class SameKindTransferError(DomainException):
+    """Raised when a transfer is requested but source and destination boards match."""
+
+    def __init__(self) -> None:
+        super().__init__("Source and destination boards must differ for a transfer.")
+
+
 class BucketItemNotFoundError(DomainException):
     """Raised when a bucket item cannot be found.
 

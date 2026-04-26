@@ -150,7 +150,16 @@
       "in_progress": "Movido para In Progress",
       "blocked": "Movido para Blocked",
       "done": "Movido para Done"
-    }
+    },
+    "transferTo": {
+      "adult": "Mover para Balde Adulto",
+      "happy": "Mover para Balde Feliz"
+    },
+    "transferredTo": {
+      "adult": "Movido para Balde Adulto",
+      "happy": "Movido para Balde Feliz"
+    },
+    "transferDestinationFull": "Balde de destino esta com IN_PROGRESS no limite. Mova ou conclua um item la primeiro."
   },
   "settings": {
     "title": "Configuracoes",

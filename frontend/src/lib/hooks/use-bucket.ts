@@ -84,6 +84,15 @@ export function useBucket(kind: BucketKind) {
     [kind],
   );
 
+  const transferItem = useCallback(
+    async (id: string, target_kind: BucketKind) => {
+      const updated = await bucketApi.transferItem(kind, id, target_kind);
+      setItems((prev) => prev.filter((item) => item.id !== id));
+      return updated;
+    },
+    [kind],
+  );
+
   const drawSuggestion = useCallback(async () => {
     const result = await bucketApi.drawSuggestion(kind);
     return result.item;
@@ -108,6 +117,7 @@ export function useBucket(kind: BucketKind) {
     updateItem,
     deleteItem,
     moveItem,
+    transferItem,
     drawSuggestion,
     updateSettings,
   };

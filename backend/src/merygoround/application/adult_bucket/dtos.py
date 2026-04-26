@@ -52,6 +52,17 @@ class MoveBucketItemRequest(BaseModel):
     status: KanbanStatusLiteral
 
 
+class TransferBucketItemRequest(BaseModel):
+    """Request DTO for transferring a bucket item to a different board.
+
+    Attributes:
+        target_kind: Destination board ('adult' or 'happy'); must differ from
+            the source.
+    """
+
+    target_kind: BucketKindLiteral
+
+
 class BucketItemResponse(BaseModel):
     """Response DTO representing a bucket item.
 
