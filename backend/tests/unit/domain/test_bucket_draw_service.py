@@ -1,4 +1,4 @@
-"""Tests for the BucketDrawService domain service."""
+"""Tests for the BucketKanbanService and BucketSettingsService domain services."""
 
 from __future__ import annotations
 
@@ -6,20 +6,28 @@ import uuid
 
 import pytest
 
-from merygoround.domain.adult_bucket.entities import BucketDraw, BucketItem, DrawStatus
+from merygoround.domain.adult_bucket.entities import BucketItem, KanbanStatus
 from merygoround.domain.adult_bucket.exceptions import (
-    ActiveDrawExistsError,
-    DrawNotActiveError,
-    JustificationTooShortError,
+    InvalidMaxInProgressError,
+    MaxInProgressReachedError,
     NoBucketItemsError,
 )
-from merygoround.domain.adult_bucket.services import BucketDrawService
+from merygoround.domain.adult_bucket.services import (
+    BucketKanbanService,
+    BucketSettingsService,
+)
 
 
 @pytest.fixture
-def draw_service() -> BucketDrawService:
-    """Provide a BucketDrawService instance."""
-    return BucketDrawService()
+def kanban_service() -> BucketKanbanService:
+    """Provide a BucketKanbanService instance."""
+    return BucketKanbanService()
+
+
+@pytest.fixture
+def settings_service() -> BucketSettingsService:
+    """Provide a BucketSettingsService instance."""
+    return BucketSettingsService()
 
 
 @pytest.fixture
@@ -28,113 +36,177 @@ def user_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
-def _make_item(user_id: uuid.UUID, name: str = "Test Item") -> BucketItem:
-    """Create a BucketItem for testing."""
+def _make_item(
+    user_id: uuid.UUID,
+    name: str = "Test Item",
+    status: KanbanStatus = KanbanStatus.TO_DO,
+) -> BucketItem:
+    """Create a BucketItem in a given status for testing."""
     return BucketItem(
         id=uuid.uuid4(),
         user_id=user_id,
         name=name,
         description="A test bucket item",
+        status=status,
     )
 
 
-def _make_active_draw(user_id: uuid.UUID) -> BucketDraw:
-    """Create an active BucketDraw for testing."""
-    return BucketDraw(
-        id=uuid.uuid4(),
-        bucket_item_id=uuid.uuid4(),
-        user_id=user_id,
-        status=DrawStatus.ACTIVE,
-    )
+class TestBucketKanbanServiceMove:
+    """Test suite for BucketKanbanService.move."""
 
-
-class TestBucketDrawService:
-    """Test suite for BucketDrawService."""
-
-    def test_draw_when_no_active_draw(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
+    def test_move_to_in_progress_when_under_limit(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
     ) -> None:
-        """Drawing without an active draw succeeds and returns an ACTIVE draw."""
+        """Moving an item into IN_PROGRESS while under the limit succeeds."""
+        item = _make_item(user_id, status=KanbanStatus.TO_DO)
+
+        result = kanban_service.move(
+            item, KanbanStatus.IN_PROGRESS, in_progress_count=1, max_in_progress=2
+        )
+
+        assert result.status == KanbanStatus.IN_PROGRESS
+        assert result.started_at is not None
+        assert result.completed_at is None
+
+    def test_move_to_in_progress_blocked_when_at_limit(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """Moving into IN_PROGRESS at the limit raises MaxInProgressReachedError."""
+        item = _make_item(user_id, status=KanbanStatus.TO_DO)
+
+        with pytest.raises(MaxInProgressReachedError):
+            kanban_service.move(
+                item, KanbanStatus.IN_PROGRESS, in_progress_count=2, max_in_progress=2
+            )
+
+    def test_move_to_done_sets_completed_at(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """Moving an item into DONE stamps completed_at."""
+        item = _make_item(user_id, status=KanbanStatus.IN_PROGRESS)
+
+        result = kanban_service.move(
+            item, KanbanStatus.DONE, in_progress_count=0, max_in_progress=2
+        )
+
+        assert result.status == KanbanStatus.DONE
+        assert result.completed_at is not None
+
+    def test_move_done_to_in_progress_when_slot_free(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """Done items can be reopened into IN_PROGRESS if there is a slot."""
+        item = _make_item(user_id, status=KanbanStatus.DONE)
+
+        result = kanban_service.move(
+            item, KanbanStatus.IN_PROGRESS, in_progress_count=0, max_in_progress=2
+        )
+
+        assert result.status == KanbanStatus.IN_PROGRESS
+
+    def test_move_in_progress_to_blocked_does_not_check_limit(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """Moving away from IN_PROGRESS never raises the limit error."""
+        item = _make_item(user_id, status=KanbanStatus.IN_PROGRESS)
+
+        result = kanban_service.move(
+            item, KanbanStatus.BLOCKED, in_progress_count=2, max_in_progress=2
+        )
+
+        assert result.status == KanbanStatus.BLOCKED
+
+    def test_move_in_progress_to_in_progress_is_noop_for_limit(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """Re-applying IN_PROGRESS to an already IN_PROGRESS item never raises."""
+        item = _make_item(user_id, status=KanbanStatus.IN_PROGRESS)
+
+        result = kanban_service.move(
+            item, KanbanStatus.IN_PROGRESS, in_progress_count=2, max_in_progress=2
+        )
+
+        assert result.status == KanbanStatus.IN_PROGRESS
+
+    def test_move_to_blocked_keeps_started_at(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """started_at is preserved when leaving IN_PROGRESS to BLOCKED."""
+        item = _make_item(user_id, status=KanbanStatus.IN_PROGRESS)
+        result = kanban_service.move(
+            item, KanbanStatus.IN_PROGRESS, in_progress_count=0, max_in_progress=2
+        )
+        first_started = result.started_at
+
+        result = kanban_service.move(
+            result, KanbanStatus.BLOCKED, in_progress_count=0, max_in_progress=2
+        )
+
+        assert result.started_at == first_started
+
+
+class TestBucketKanbanServiceDrawSuggestion:
+    """Test suite for BucketKanbanService.draw_suggestion."""
+
+    def test_draw_returns_random_to_do_item(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
+    ) -> None:
+        """draw_suggestion returns one of the TO_DO items without mutation."""
         items = [_make_item(user_id, f"Item {i}") for i in range(3)]
-        result = draw_service.draw(user_id, active_draw=None, available_items=items)
 
-        assert result.status == DrawStatus.ACTIVE
-        assert result.user_id == user_id
-        assert result.bucket_item_id in {item.id for item in items}
+        suggestion = kanban_service.draw_suggestion(
+            to_do_items=items, in_progress_count=0, max_in_progress=2
+        )
 
-    def test_draw_raises_when_active_draw_exists(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
+        assert suggestion in items
+        assert suggestion.status == KanbanStatus.TO_DO
+
+    def test_draw_raises_when_at_max_in_progress(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
     ) -> None:
-        """Drawing with an existing active draw raises ActiveDrawExistsError."""
-        active = _make_active_draw(user_id)
+        """draw_suggestion raises when the user is already at max IN_PROGRESS."""
         items = [_make_item(user_id)]
+        with pytest.raises(MaxInProgressReachedError):
+            kanban_service.draw_suggestion(
+                to_do_items=items, in_progress_count=2, max_in_progress=2
+            )
 
-        with pytest.raises(ActiveDrawExistsError):
-            draw_service.draw(user_id, active_draw=active, available_items=items)
-
-    def test_draw_raises_when_no_items(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
+    def test_draw_raises_when_no_to_do_items(
+        self, kanban_service: BucketKanbanService, user_id: uuid.UUID
     ) -> None:
-        """Drawing with no available items raises NoBucketItemsError."""
+        """draw_suggestion raises NoBucketItemsError when TO_DO is empty."""
         with pytest.raises(NoBucketItemsError):
-            draw_service.draw(user_id, active_draw=None, available_items=[])
+            kanban_service.draw_suggestion(
+                to_do_items=[], in_progress_count=0, max_in_progress=2
+            )
 
-    def test_resolve_sets_status_to_resolved(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
+
+class TestBucketSettingsService:
+    """Test suite for BucketSettingsService."""
+
+    def test_validate_accepts_positive_int(
+        self, settings_service: BucketSettingsService
     ) -> None:
-        """Resolving an active draw sets status to RESOLVED with a timestamp."""
-        draw = _make_active_draw(user_id)
-        result = draw_service.resolve(draw)
+        """A positive integer is accepted unchanged."""
+        assert settings_service.validate_max_in_progress(3) == 3
 
-        assert result.status == DrawStatus.RESOLVED
-        assert result.resolved_at is not None
-
-    def test_resolve_raises_when_not_active(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
+    def test_validate_rejects_zero(
+        self, settings_service: BucketSettingsService
     ) -> None:
-        """Resolving a non-active draw raises DrawNotActiveError."""
-        draw = _make_active_draw(user_id)
-        draw.status = DrawStatus.RESOLVED
+        """Zero is rejected."""
+        with pytest.raises(InvalidMaxInProgressError):
+            settings_service.validate_max_in_progress(0)
 
-        with pytest.raises(DrawNotActiveError):
-            draw_service.resolve(draw)
-
-    def test_return_with_valid_justification(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
+    def test_validate_rejects_negative(
+        self, settings_service: BucketSettingsService
     ) -> None:
-        """Returning a draw with a valid justification sets status to RETURNED."""
-        draw = _make_active_draw(user_id)
-        justification = "I need more time to prepare for this task"
-        result = draw_service.return_draw(draw, justification)
+        """Negative integers are rejected."""
+        with pytest.raises(InvalidMaxInProgressError):
+            settings_service.validate_max_in_progress(-1)
 
-        assert result.status == DrawStatus.RETURNED
-        assert result.return_justification == justification
-        assert result.resolved_at is not None
-
-    def test_return_with_short_justification_raises(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
+    def test_validate_rejects_non_int(
+        self, settings_service: BucketSettingsService
     ) -> None:
-        """Returning a draw with a justification shorter than 10 chars raises error."""
-        draw = _make_active_draw(user_id)
-
-        with pytest.raises(JustificationTooShortError):
-            draw_service.return_draw(draw, "too short")
-
-    def test_return_raises_when_not_active(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
-    ) -> None:
-        """Returning a non-active draw raises DrawNotActiveError."""
-        draw = _make_active_draw(user_id)
-        draw.status = DrawStatus.RETURNED
-
-        with pytest.raises(DrawNotActiveError):
-            draw_service.return_draw(draw, "This is a valid justification text")
-
-    def test_return_strips_justification_whitespace(
-        self, draw_service: BucketDrawService, user_id: uuid.UUID
-    ) -> None:
-        """Justification whitespace is stripped before length validation."""
-        draw = _make_active_draw(user_id)
-
-        with pytest.raises(JustificationTooShortError):
-            draw_service.return_draw(draw, "   short   ")
+        """Non-integer values are rejected."""
+        with pytest.raises(InvalidMaxInProgressError):
+            settings_service.validate_max_in_progress("3")  # type: ignore[arg-type]

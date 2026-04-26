@@ -5,32 +5,32 @@ from __future__ import annotations
 from merygoround.domain.shared.exceptions import DomainException
 
 
-class ActiveDrawExistsError(DomainException):
-    """Raised when a user attempts to draw while already having an active draw."""
-
-    def __init__(self) -> None:
-        super().__init__("An active draw already exists. Resolve or return it first.")
-
-
 class NoBucketItemsError(DomainException):
-    """Raised when no bucket items are available for drawing."""
+    """Raised when no eligible bucket items are available for a draw suggestion."""
 
     def __init__(self) -> None:
         super().__init__("No bucket items available for drawing.")
 
 
-class DrawNotActiveError(DomainException):
-    """Raised when attempting to resolve or return a draw that is not active."""
+class MaxInProgressReachedError(DomainException):
+    """Raised when moving an item to IN_PROGRESS would exceed the per-user limit.
+
+    Args:
+        max_in_progress: The configured maximum number of IN_PROGRESS items.
+    """
+
+    def __init__(self, max_in_progress: int) -> None:
+        super().__init__(
+            f"Maximum of {max_in_progress} in-progress items already reached."
+        )
+        self.max_in_progress = max_in_progress
+
+
+class InvalidMaxInProgressError(DomainException):
+    """Raised when an invalid max_in_progress value is provided."""
 
     def __init__(self) -> None:
-        super().__init__("Draw is not in ACTIVE status.")
-
-
-class JustificationTooShortError(DomainException):
-    """Raised when a return justification is shorter than the minimum length."""
-
-    def __init__(self) -> None:
-        super().__init__("Justification must be at least 10 characters long.")
+        super().__init__("max_in_progress must be a positive integer.")
 
 
 class BucketItemNotFoundError(DomainException):

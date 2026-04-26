@@ -2,14 +2,29 @@
 
 from __future__ import annotations
 
-import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from merygoround.domain.adult_bucket.entities import BucketDraw, BucketItem, DrawStatus
-from merygoround.domain.adult_bucket.repository import BucketDrawRepository, BucketItemRepository
-from merygoround.infrastructure.database.models.bucket import BucketDrawModel, BucketItemModel
+from merygoround.domain.adult_bucket.entities import (
+    BucketItem,
+    BucketKind,
+    BucketSettings,
+    KanbanStatus,
+)
+from merygoround.domain.adult_bucket.repository import (
+    BucketItemRepository,
+    BucketSettingsRepository,
+)
+from merygoround.infrastructure.database.models.bucket import (
+    BucketItemModel,
+    BucketSettingsModel,
+)
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SqlAlchemyBucketItemRepository(BucketItemRepository):
@@ -23,74 +38,65 @@ class SqlAlchemyBucketItemRepository(BucketItemRepository):
         self._session = session
 
     async def get_by_id(self, item_id: uuid.UUID) -> BucketItem | None:
-        """Retrieve a bucket item by its unique identifier.
-
-        Args:
-            item_id: The UUID of the bucket item.
-
-        Returns:
-            The BucketItem domain entity if found, otherwise None.
-        """
+        """Retrieve a bucket item by its unique identifier (no kind filter)."""
         model = await self._session.get(BucketItemModel, item_id)
         if model is None:
             return None
         return self._to_domain(model)
 
-    async def get_by_user_id(self, user_id: uuid.UUID) -> list[BucketItem]:
-        """Retrieve all bucket items belonging to a user.
-
-        Args:
-            user_id: The UUID of the owning user.
-
-        Returns:
-            List of BucketItem domain entities.
-        """
-        stmt = select(BucketItemModel).where(BucketItemModel.user_id == user_id)
+    async def get_by_user_and_kind(
+        self, user_id: uuid.UUID, kind: BucketKind
+    ) -> list[BucketItem]:
+        """Retrieve all bucket items for a user/kind, ordered for board display."""
+        stmt = (
+            select(BucketItemModel)
+            .where(
+                BucketItemModel.user_id == user_id,
+                BucketItemModel.kind == kind.value,
+            )
+            .order_by(BucketItemModel.updated_at.desc())
+        )
         result = await self._session.execute(stmt)
         return [self._to_domain(m) for m in result.scalars().all()]
 
-    async def get_available_for_draw(self, user_id: uuid.UUID) -> list[BucketItem]:
-        """Retrieve bucket items eligible for drawing.
-
-        Excludes items that have been resolved in a previous draw.
-
-        Args:
-            user_id: The UUID of the owning user.
-
-        Returns:
-            List of BucketItem domain entities available for drawing.
-        """
-        resolved_item_ids = (
-            select(BucketDrawModel.bucket_item_id)
+    async def count_in_progress(self, user_id: uuid.UUID, kind: BucketKind) -> int:
+        """Count IN_PROGRESS items for a user/kind."""
+        stmt = (
+            select(func.count())
+            .select_from(BucketItemModel)
             .where(
-                BucketDrawModel.user_id == user_id,
-                BucketDrawModel.status == DrawStatus.RESOLVED.value,
+                BucketItemModel.user_id == user_id,
+                BucketItemModel.kind == kind.value,
+                BucketItemModel.status == KanbanStatus.IN_PROGRESS.value,
             )
-            .scalar_subquery()
         )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
 
+    async def get_to_do_for_user_and_kind(
+        self, user_id: uuid.UUID, kind: BucketKind
+    ) -> list[BucketItem]:
+        """Retrieve all TO_DO items for a user/kind."""
         stmt = select(BucketItemModel).where(
             BucketItemModel.user_id == user_id,
-            BucketItemModel.id.notin_(resolved_item_ids),
+            BucketItemModel.kind == kind.value,
+            BucketItemModel.status == KanbanStatus.TO_DO.value,
         )
         result = await self._session.execute(stmt)
         return [self._to_domain(m) for m in result.scalars().all()]
 
     async def add(self, item: BucketItem) -> BucketItem:
-        """Persist a new bucket item.
-
-        Args:
-            item: The BucketItem domain entity to persist.
-
-        Returns:
-            The persisted BucketItem domain entity.
-        """
+        """Persist a new bucket item."""
         model = BucketItemModel(
             id=item.id,
             user_id=item.user_id,
             name=item.name,
             description=item.description,
             category=item.category,
+            status=item.status.value,
+            kind=item.kind.value,
+            started_at=item.started_at,
+            completed_at=item.completed_at,
             created_at=item.created_at,
             updated_at=item.updated_at,
         )
@@ -99,29 +105,22 @@ class SqlAlchemyBucketItemRepository(BucketItemRepository):
         return self._to_domain(model)
 
     async def update(self, item: BucketItem) -> BucketItem:
-        """Update an existing bucket item.
-
-        Args:
-            item: The BucketItem domain entity with updated state.
-
-        Returns:
-            The updated BucketItem domain entity.
-        """
+        """Update an existing bucket item."""
         model = await self._session.get(BucketItemModel, item.id)
         if model is not None:
             model.name = item.name
             model.description = item.description
             model.category = item.category
+            model.status = item.status.value
+            model.kind = item.kind.value
+            model.started_at = item.started_at
+            model.completed_at = item.completed_at
             model.updated_at = item.updated_at
             await self._session.flush()
         return item
 
     async def delete(self, item_id: uuid.UUID) -> None:
-        """Remove a bucket item by its unique identifier.
-
-        Args:
-            item_id: The UUID of the bucket item to remove.
-        """
+        """Remove a bucket item by its unique identifier."""
         stmt = delete(BucketItemModel).where(BucketItemModel.id == item_id)
         await self._session.execute(stmt)
         await self._session.flush()
@@ -134,13 +133,17 @@ class SqlAlchemyBucketItemRepository(BucketItemRepository):
             name=model.name,
             description=model.description,
             category=model.category,
+            status=KanbanStatus(model.status),
+            kind=BucketKind(model.kind),
+            started_at=model.started_at,
+            completed_at=model.completed_at,
             created_at=model.created_at,
             updated_at=model.updated_at,
         )
 
 
-class SqlAlchemyBucketDrawRepository(BucketDrawRepository):
-    """Concrete BucketDrawRepository backed by SQLAlchemy and PostgreSQL.
+class SqlAlchemyBucketSettingsRepository(BucketSettingsRepository):
+    """Concrete BucketSettingsRepository backed by SQLAlchemy and PostgreSQL.
 
     Args:
         session: The async database session.
@@ -149,32 +152,13 @@ class SqlAlchemyBucketDrawRepository(BucketDrawRepository):
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def get_by_id(self, draw_id: uuid.UUID) -> BucketDraw | None:
-        """Retrieve a bucket draw by its unique identifier.
-
-        Args:
-            draw_id: The UUID of the bucket draw.
-
-        Returns:
-            The BucketDraw domain entity if found, otherwise None.
-        """
-        model = await self._session.get(BucketDrawModel, draw_id)
-        if model is None:
-            return None
-        return self._to_domain(model)
-
-    async def get_active_by_user_id(self, user_id: uuid.UUID) -> BucketDraw | None:
-        """Retrieve the current active draw for a user.
-
-        Args:
-            user_id: The UUID of the user.
-
-        Returns:
-            The active BucketDraw if one exists, otherwise None.
-        """
-        stmt = select(BucketDrawModel).where(
-            BucketDrawModel.user_id == user_id,
-            BucketDrawModel.status == DrawStatus.ACTIVE.value,
+    async def get_by_user_and_kind(
+        self, user_id: uuid.UUID, kind: BucketKind
+    ) -> BucketSettings | None:
+        """Retrieve the settings for a user/kind, if persisted."""
+        stmt = select(BucketSettingsModel).where(
+            BucketSettingsModel.user_id == user_id,
+            BucketSettingsModel.kind == kind.value,
         )
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
@@ -182,87 +166,39 @@ class SqlAlchemyBucketDrawRepository(BucketDrawRepository):
             return None
         return self._to_domain(model)
 
-    async def get_by_user_id(
-        self, user_id: uuid.UUID, page: int = 1, per_page: int = 20
-    ) -> tuple[list[BucketDraw], int]:
-        """Retrieve paginated bucket draws for a user.
-
-        Args:
-            user_id: The UUID of the user.
-            page: Page number (1-indexed).
-            per_page: Number of items per page.
-
-        Returns:
-            Tuple of (list of BucketDraw entities, total count).
-        """
-        count_stmt = (
-            select(func.count())
-            .select_from(BucketDrawModel)
-            .where(BucketDrawModel.user_id == user_id)
-        )
-        count_result = await self._session.execute(count_stmt)
-        total = count_result.scalar_one()
-
-        offset = (page - 1) * per_page
-        stmt = (
-            select(BucketDrawModel)
-            .where(BucketDrawModel.user_id == user_id)
-            .order_by(BucketDrawModel.drawn_at.desc())
-            .offset(offset)
-            .limit(per_page)
+    async def upsert(self, settings: BucketSettings) -> BucketSettings:
+        """Insert or update the settings for the user/kind tuple."""
+        stmt = select(BucketSettingsModel).where(
+            BucketSettingsModel.user_id == settings.user_id,
+            BucketSettingsModel.kind == settings.kind.value,
         )
         result = await self._session.execute(stmt)
-        draws = [self._to_domain(m) for m in result.scalars().all()]
+        model = result.scalar_one_or_none()
 
-        return draws, total
+        if model is None:
+            model = BucketSettingsModel(
+                id=settings.id,
+                user_id=settings.user_id,
+                kind=settings.kind.value,
+                max_in_progress=settings.max_in_progress,
+                created_at=settings.created_at,
+                updated_at=settings.updated_at,
+            )
+            self._session.add(model)
+        else:
+            model.max_in_progress = settings.max_in_progress
+            model.updated_at = settings.updated_at
 
-    async def add(self, draw: BucketDraw) -> BucketDraw:
-        """Persist a new bucket draw.
-
-        Args:
-            draw: The BucketDraw domain entity to persist.
-
-        Returns:
-            The persisted BucketDraw domain entity.
-        """
-        model = BucketDrawModel(
-            id=draw.id,
-            bucket_item_id=draw.bucket_item_id,
-            user_id=draw.user_id,
-            drawn_at=draw.drawn_at,
-            status=draw.status.value,
-            resolved_at=draw.resolved_at,
-            return_justification=draw.return_justification,
-        )
-        self._session.add(model)
         await self._session.flush()
         return self._to_domain(model)
 
-    async def update(self, draw: BucketDraw) -> BucketDraw:
-        """Update an existing bucket draw.
-
-        Args:
-            draw: The BucketDraw domain entity with updated state.
-
-        Returns:
-            The updated BucketDraw domain entity.
-        """
-        model = await self._session.get(BucketDrawModel, draw.id)
-        if model is not None:
-            model.status = draw.status.value
-            model.resolved_at = draw.resolved_at
-            model.return_justification = draw.return_justification
-            await self._session.flush()
-        return draw
-
-    def _to_domain(self, model: BucketDrawModel) -> BucketDraw:
-        """Map a BucketDrawModel ORM instance to a BucketDraw domain entity."""
-        return BucketDraw(
+    def _to_domain(self, model: BucketSettingsModel) -> BucketSettings:
+        """Map a BucketSettingsModel ORM instance to a BucketSettings entity."""
+        return BucketSettings(
             id=model.id,
-            bucket_item_id=model.bucket_item_id,
             user_id=model.user_id,
-            drawn_at=model.drawn_at,
-            status=DrawStatus(model.status),
-            resolved_at=model.resolved_at,
-            return_justification=model.return_justification,
+            kind=BucketKind(model.kind),
+            max_in_progress=model.max_in_progress,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
         )

@@ -1,87 +1,114 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { BucketItem, BucketDraw, CreateBucketItemRequest, UpdateBucketItemRequest } from "@/types/bucket";
+import type {
+  BucketItem,
+  BucketKind,
+  BucketSettings,
+  CreateBucketItemRequest,
+  KanbanStatus,
+  UpdateBucketItemRequest,
+} from "@/types/bucket";
 import * as bucketApi from "@/lib/api/bucket";
 
 /**
- * Manage bucket items and draw state.
- * @returns Bucket items, active draw, and mutation functions.
+ * Manage bucket items, Kanban settings, and draw suggestions for a given board.
+ * @param kind Which board to manage ("adult" or "happy").
+ * @returns Items, settings, and mutation/state helpers scoped to that board.
  */
-export function useBucket() {
+export function useBucket(kind: BucketKind) {
   const [items, setItems] = useState<BucketItem[]>([]);
-  const [activeDraw, setActiveDraw] = useState<BucketDraw | null>(null);
+  const [settings, setSettings] = useState<BucketSettings>({ max_in_progress: 2 });
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchItems = useCallback(async () => {
     try {
-      const data = await bucketApi.listItems();
+      const data = await bucketApi.listItems(kind);
       setItems(data);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [kind]);
 
-  const fetchActiveDraw = useCallback(async () => {
+  const fetchSettings = useCallback(async () => {
     try {
-      const data = await bucketApi.getActiveDraw();
-      setActiveDraw(data);
+      const data = await bucketApi.getSettings(kind);
+      setSettings(data);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [kind]);
 
   useEffect(() => {
-    setIsLoading(true);
-    Promise.all([fetchItems(), fetchActiveDraw()]).finally(() => setIsLoading(false));
-  }, [fetchItems, fetchActiveDraw]);
+    let cancelled = false;
+    Promise.all([fetchItems(), fetchSettings()]).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchItems, fetchSettings]);
 
-  const createItem = useCallback(async (data: CreateBucketItemRequest) => {
-    const newItem = await bucketApi.createItem(data);
-    setItems((prev) => [...prev, newItem]);
-    return newItem;
-  }, []);
+  const createItem = useCallback(
+    async (data: CreateBucketItemRequest) => {
+      const newItem = await bucketApi.createItem(kind, data);
+      setItems((prev) => [newItem, ...prev]);
+      return newItem;
+    },
+    [kind],
+  );
 
-  const updateItem = useCallback(async (id: string, data: UpdateBucketItemRequest) => {
-    const updated = await bucketApi.updateItem(id, data);
-    setItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
-    return updated;
-  }, []);
+  const updateItem = useCallback(
+    async (id: string, data: UpdateBucketItemRequest) => {
+      const updated = await bucketApi.updateItem(kind, id, data);
+      setItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      return updated;
+    },
+    [kind],
+  );
 
-  const deleteItem = useCallback(async (id: string) => {
-    await bucketApi.deleteItem(id);
-    setItems((prev) => prev.filter((item) => item.id !== id));
-  }, []);
+  const deleteItem = useCallback(
+    async (id: string) => {
+      await bucketApi.deleteItem(kind, id);
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    },
+    [kind],
+  );
 
-  const draw = useCallback(async () => {
-    const newDraw = await bucketApi.draw();
-    setActiveDraw(newDraw);
-    return newDraw;
-  }, []);
+  const moveItem = useCallback(
+    async (id: string, status: KanbanStatus) => {
+      const updated = await bucketApi.moveItem(kind, id, status);
+      setItems((prev) => prev.map((item) => (item.id === id ? updated : item)));
+      return updated;
+    },
+    [kind],
+  );
 
-  const resolveDraw = useCallback(async (drawId: string) => {
-    const resolved = await bucketApi.resolveDraw(drawId);
-    setActiveDraw(null);
-    return resolved;
-  }, []);
+  const drawSuggestion = useCallback(async () => {
+    const result = await bucketApi.drawSuggestion(kind);
+    return result.item;
+  }, [kind]);
 
-  const returnDraw = useCallback(async (drawId: string, justification: string) => {
-    const returned = await bucketApi.returnDraw(drawId, justification);
-    setActiveDraw(null);
-    return returned;
-  }, []);
+  const updateSettings = useCallback(
+    async (max_in_progress: number) => {
+      const updated = await bucketApi.updateSettings(kind, { max_in_progress });
+      setSettings(updated);
+      return updated;
+    },
+    [kind],
+  );
 
   return {
     items,
-    activeDraw,
+    settings,
     isLoading,
     fetchItems,
-    fetchActiveDraw,
+    fetchSettings,
     createItem,
     updateItem,
     deleteItem,
-    draw,
-    resolveDraw,
-    returnDraw,
+    moveItem,
+    drawSuggestion,
+    updateSettings,
   };
 }

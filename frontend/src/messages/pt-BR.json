@@ -101,32 +101,56 @@
   },
   "bucket": {
     "title": "Balde Adulto",
-    "draw": "Sortear do Balde",
-    "resolve": "Marcar Resolvido",
-    "return": "Devolver ao Balde",
-    "justification": "Justificativa de Devolucao",
-    "justificationPlaceholder": "Por que voce esta devolvendo este item? (min 10 caracteres)",
-    "justificationTooShort": "A justificativa deve ter pelo menos 10 caracteres",
-    "activeDraw": "Ativo no Momento",
-    "noItems": "Nenhum item no balde ainda. Adicione algo divertido!",
-    "noDraw": "Nenhum sorteio ativo. Sorteie um item para comecar!",
+    "draw": "Sortear do To Do",
+    "drawHighlighted": "Sugestao: {name}",
+    "drawNoItems": "Nenhuma tarefa no To Do para sortear.",
+    "noItems": "Nenhum item no quadro ainda. Adicione sua primeira tarefa!",
     "addItem": "Adicionar Item",
     "editItem": "Editar Item",
     "deleteItem": "Excluir Item",
     "deleteConfirm": "Tem certeza que deseja excluir este item?",
     "itemName": "Nome",
-    "itemNamePlaceholder": "ex: Viagem de fim de semana",
+    "itemNamePlaceholder": "ex: Marcar consulta medica",
     "description": "Descricao",
-    "descriptionPlaceholder": "Descreva este item do balde...",
+    "descriptionPlaceholder": "Descreva esta tarefa...",
     "category": "Categoria",
-    "categoryPlaceholder": "ex: Viagem",
-    "itemCreated": "Item do balde criado",
-    "itemUpdated": "Item do balde atualizado",
-    "itemDeleted": "Item do balde excluido",
-    "drawSuccess": "Item sorteado do balde!",
-    "resolveSuccess": "Item resolvido. Muito bem!",
-    "returnSuccess": "Item devolvido ao balde.",
-    "drawnOn": "Sorteado em"
+    "categoryPlaceholder": "ex: Saude",
+    "itemCreated": "Item criado",
+    "itemUpdated": "Item atualizado",
+    "itemDeleted": "Item excluido",
+    "actions": "Acoes",
+    "dragHandle": "Arrastar",
+    "save": "Salvar",
+    "settingsTitle": "Quadro Kanban",
+    "maxInProgress": "Maximo em andamento",
+    "maxInProgressDescription": "Limite de tarefas que podem estar em 'In Progress' simultaneamente.",
+    "invalidMaxInProgress": "Informe um numero inteiro positivo.",
+    "maxInProgressReached": "Voce ja tem o maximo de {max} tarefa(s) em andamento.",
+    "inProgressLabel": "Em andamento: {current}/{max}",
+    "column": {
+      "to_do": "To Do",
+      "in_progress": "In Progress",
+      "blocked": "Blocked",
+      "done": "Done"
+    },
+    "emptyColumn": {
+      "to_do": "Nenhuma tarefa por aqui.",
+      "in_progress": "Nada em andamento.",
+      "blocked": "Nada bloqueado.",
+      "done": "Nada concluido."
+    },
+    "moveTo": {
+      "to_do": "Mover para To Do",
+      "in_progress": "Mover para In Progress",
+      "blocked": "Mover para Blocked",
+      "done": "Mover para Done"
+    },
+    "movedTo": {
+      "to_do": "Movido para To Do",
+      "in_progress": "Movido para In Progress",
+      "blocked": "Movido para Blocked",
+      "done": "Movido para Done"
+    }
   },
   "settings": {
     "title": "Configuracoes",
@@ -152,11 +176,117 @@
   },
   "navigation": {
     "home": "Roleta",
+    "dashboard": "Painel",
     "chores": "Tarefas",
     "bucket": "Balde",
+    "happyBucket": "Balde Feliz",
     "wallet": "Carteira",
     "settings": "Config",
     "logout": "Sair"
+  },
+  "dashboard": {
+    "title": "Painel",
+    "subtitle": "Visao consolidada do seu uso",
+    "loadError": "Nao foi possivel carregar o painel.",
+    "period": {
+      "7d": "7 dias",
+      "30d": "30 dias",
+      "90d": "90 dias",
+      "year": "Ano"
+    },
+    "today": {
+      "wheelToday": "Roda hoje",
+      "wheelHint": "Concluidas / Total",
+      "earningsToday": "Ganho hoje",
+      "earningsHint": "Soma das tarefas concluidas",
+      "inProgressAdult": "Em andamento (Adulto)",
+      "inProgressHappy": "Em andamento (Feliz)",
+      "inProgressHint": "Itens no Kanban",
+      "nextNotification": "Proxima notificacao",
+      "nextNotificationHint": "Estimativa baseada no intervalo",
+      "inMinutes": "em {minutes} min",
+      "disabled": "Desativada"
+    },
+    "productivity": {
+      "title": "Produtividade",
+      "completionRate": "Taxa de conclusao",
+      "completionRateHint": "Concluidas / Total no periodo",
+      "currentStreak": "Streak atual",
+      "currentStreakHint": "Dias seguidos com pelo menos 1 conclusao",
+      "longestStreak": "Maior streak",
+      "longestStreakHint": "Recorde geral",
+      "days": "dias",
+      "spinsPerDay": "Spins por dia",
+      "spinsPerDayHint": "Distribuicao por status",
+      "legendCompleted": "Concluida",
+      "legendSkipped": "Pulada",
+      "legendDeactivated": "Desativada",
+      "legendPending": "Pendente",
+      "heatmap": "Heatmap (dia da semana x hora)",
+      "heatmapHint": "Concentracao de tarefas concluidas no periodo",
+      "heatmapEmpty": "Sem conclusoes no periodo selecionado.",
+      "heatmapTooltip": "{count} no(s) {weekday} {hour}h",
+      "weekday": {
+        "0": "Seg",
+        "1": "Ter",
+        "2": "Qua",
+        "3": "Qui",
+        "4": "Sex",
+        "5": "Sab",
+        "6": "Dom"
+      }
+    },
+    "weekly": {
+      "title": "Resumo semanal",
+      "cardTitle": "Tarefas concluidas e ganhos por semana",
+      "cardHint": "Barras: tarefas concluidas. Linha: ganho (R$).",
+      "empty": "Sem dados no periodo selecionado.",
+      "totalChores": "Tarefas",
+      "totalEarnings": "Total",
+      "legendChores": "Tarefas concluidas",
+      "legendEarnings": "Ganho (R$)"
+    },
+    "kanban": {
+      "title": "Saude do Kanban",
+      "distributionTitle": {
+        "adult": "Distribuicao - Balde Adulto",
+        "happy": "Distribuicao - Balde Feliz"
+      },
+      "avgLeadTime": "Lead time medio: {hours}h",
+      "throughput": "Throughput semanal (concluidos)",
+      "throughputHint": "Itens movidos para Done por semana",
+      "throughputEmpty": "Sem itens concluidos no periodo.",
+      "legendAdult": "Adulto",
+      "legendHappy": "Feliz",
+      "blockedAging": "Bloqueados ha mais de 3 dias",
+      "blockedAgingHint": "Itens parados em Blocked",
+      "blockedAgingEmpty": "Nada parado em Blocked. ",
+      "daysBlocked": "{days} dias"
+    },
+    "wallet": {
+      "title": "Carteira & Categorias",
+      "earnings": "Ganhos por dia",
+      "earningsHint": "Soma do reward das tarefas concluidas",
+      "earningsEmpty": "Sem ganhos no periodo.",
+      "totalLabel": "Total",
+      "topChores": "Top tarefas por R$",
+      "topChoresHint": "5 tarefas que mais geraram ganho",
+      "topChoresEmpty": "Nenhuma conclusao no periodo.",
+      "topChoreCategories": "Top categorias (Roda)",
+      "topBucketCategories": "Top categorias (Balde)",
+      "categoriesEmpty": "Sem dados.",
+      "adultVsHappy": "Adulto vs Feliz",
+      "adultVsHappyHint": "Criados x concluidos no periodo",
+      "createdCompleted": "{completed}/{created}",
+      "kind": {
+        "adult": "Balde Adulto",
+        "happy": "Balde Feliz"
+      }
+    }
+  },
+  "happyBucket": {
+    "title": "Balde Feliz",
+    "settingsTitle": "Quadro Balde Feliz"
   },
   "wallet": {
     "title": "Carteira",

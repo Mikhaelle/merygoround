@@ -1,11 +1,11 @@
-"""Adult Bucket API routes."""
+"""Bucket API routes (Kanban board, parameterized by board kind)."""
 
 from __future__ import annotations
 
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from merygoround.api.dependencies import get_current_user, get_session
@@ -14,201 +14,175 @@ from merygoround.application.adult_bucket.commands import (
     CreateBucketItemInput,
     DeleteBucketItemCommand,
     DeleteBucketItemInput,
-    DrawFromBucketCommand,
-    DrawFromBucketInput,
-    ResolveDrawCommand,
-    ResolveDrawInput,
-    ReturnDrawCommand,
-    ReturnDrawInput,
+    MoveBucketItemCommand,
+    MoveBucketItemInput,
     UpdateBucketItemCommand,
     UpdateBucketItemInput,
+    UpdateBucketSettingsCommand,
+    UpdateBucketSettingsInput,
 )
 from merygoround.application.adult_bucket.dtos import (
-    BucketDrawResponse,
     BucketItemResponse,
+    BucketKindLiteral,
+    BucketSettingsResponse,
     CreateBucketItemRequest,
-    ReturnDrawRequest,
+    DrawSuggestionResponse,
+    MoveBucketItemRequest,
     UpdateBucketItemRequest,
+    UpdateBucketSettingsRequest,
 )
-from merygoround.application.adult_bucket.queries import GetActiveDrawQuery, ListBucketItemsQuery
-from merygoround.domain.adult_bucket.services import BucketDrawService
+from merygoround.application.adult_bucket.queries import (
+    BucketBoardQueryInput,
+    DrawSuggestionQuery,
+    GetBucketSettingsQuery,
+    ListBucketItemsQuery,
+)
+from merygoround.domain.adult_bucket.entities import BucketKind
+from merygoround.domain.adult_bucket.services import (
+    BucketKanbanService,
+    BucketSettingsService,
+)
 from merygoround.infrastructure.database.repositories.bucket_repository import (
-    SqlAlchemyBucketDrawRepository,
     SqlAlchemyBucketItemRepository,
+    SqlAlchemyBucketSettingsRepository,
 )
 
 router = APIRouter(prefix="/bucket", tags=["adult-bucket"])
 
+_KindPath = Annotated[BucketKindLiteral, Path(description="Board kind: adult or happy")]
 
-@router.get("/items", response_model=list[BucketItemResponse])
+
+def _to_kind(kind: BucketKindLiteral) -> BucketKind:
+    """Convert a kind path string into the domain enum."""
+    return BucketKind(kind)
+
+
+@router.get("/{kind}/items", response_model=list[BucketItemResponse])
 async def list_items(
+    kind: _KindPath,
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[BucketItemResponse]:
-    """List all bucket items for the authenticated user.
-
-    Args:
-        user_id: The authenticated user's UUID.
-        session: Database session.
-
-    Returns:
-        List of BucketItemResponse DTOs.
-    """
+    """List all items on the given board for the authenticated user."""
     repo = SqlAlchemyBucketItemRepository(session)
     query = ListBucketItemsQuery(repo)
-    return await query.execute(user_id)
+    return await query.execute(
+        BucketBoardQueryInput(user_id=user_id, kind=_to_kind(kind))
+    )
 
 
-@router.post("/items", response_model=BucketItemResponse, status_code=201)
+@router.post("/{kind}/items", response_model=BucketItemResponse, status_code=201)
 async def create_item(
+    kind: _KindPath,
     body: CreateBucketItemRequest,
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BucketItemResponse:
-    """Create a new bucket item.
-
-    Args:
-        body: Item creation request.
-        user_id: The authenticated user's UUID.
-        session: Database session.
-
-    Returns:
-        BucketItemResponse representing the created item.
-    """
+    """Create a new item on the given board (lands in TO_DO)."""
     repo = SqlAlchemyBucketItemRepository(session)
     command = CreateBucketItemCommand(repo)
-    return await command.execute(CreateBucketItemInput(user_id=user_id, request=body))
+    return await command.execute(
+        CreateBucketItemInput(user_id=user_id, kind=_to_kind(kind), request=body)
+    )
 
 
-@router.put("/items/{item_id}", response_model=BucketItemResponse)
+@router.put("/{kind}/items/{item_id}", response_model=BucketItemResponse)
 async def update_item(
+    kind: _KindPath,
     item_id: uuid.UUID,
     body: UpdateBucketItemRequest,
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> BucketItemResponse:
-    """Update an existing bucket item.
-
-    Args:
-        item_id: The UUID of the item to update.
-        body: Item update request.
-        user_id: The authenticated user's UUID.
-        session: Database session.
-
-    Returns:
-        BucketItemResponse representing the updated item.
-    """
+    """Update an item's editable fields on the given board."""
     repo = SqlAlchemyBucketItemRepository(session)
     command = UpdateBucketItemCommand(repo)
     return await command.execute(
-        UpdateBucketItemInput(user_id=user_id, item_id=item_id, request=body)
+        UpdateBucketItemInput(
+            user_id=user_id,
+            kind=_to_kind(kind),
+            item_id=item_id,
+            request=body,
+        )
     )
 
 
-@router.delete("/items/{item_id}", status_code=204)
+@router.delete("/{kind}/items/{item_id}", status_code=204)
 async def delete_item(
+    kind: _KindPath,
     item_id: uuid.UUID,
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
-    """Delete a bucket item.
-
-    Args:
-        item_id: The UUID of the item to delete.
-        user_id: The authenticated user's UUID.
-        session: Database session.
-    """
+    """Delete an item from the given board."""
     repo = SqlAlchemyBucketItemRepository(session)
     command = DeleteBucketItemCommand(repo)
-    await command.execute(DeleteBucketItemInput(user_id=user_id, item_id=item_id))
+    await command.execute(
+        DeleteBucketItemInput(user_id=user_id, kind=_to_kind(kind), item_id=item_id)
+    )
 
 
-@router.post("/draw", response_model=BucketDrawResponse, status_code=201)
-async def draw_from_bucket(
+@router.put("/{kind}/items/{item_id}/move", response_model=BucketItemResponse)
+async def move_item(
+    kind: _KindPath,
+    item_id: uuid.UUID,
+    body: MoveBucketItemRequest,
     user_id: Annotated[uuid.UUID, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> BucketDrawResponse:
-    """Draw a random item from the bucket.
-
-    Args:
-        user_id: The authenticated user's UUID.
-        session: Database session.
-
-    Returns:
-        BucketDrawResponse with the drawn item.
-    """
+) -> BucketItemResponse:
+    """Move an item between Kanban columns on the given board."""
     item_repo = SqlAlchemyBucketItemRepository(session)
-    draw_repo = SqlAlchemyBucketDrawRepository(session)
-    draw_service = BucketDrawService()
-    command = DrawFromBucketCommand(item_repo, draw_repo, draw_service)
-    return await command.execute(DrawFromBucketInput(user_id=user_id))
-
-
-@router.get("/draws/active", response_model=BucketDrawResponse | None)
-async def get_active_draw(
-    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> BucketDrawResponse | None:
-    """Get the current active draw for the user.
-
-    Args:
-        user_id: The authenticated user's UUID.
-        session: Database session.
-
-    Returns:
-        BucketDrawResponse if an active draw exists, otherwise None.
-    """
-    item_repo = SqlAlchemyBucketItemRepository(session)
-    draw_repo = SqlAlchemyBucketDrawRepository(session)
-    query = GetActiveDrawQuery(draw_repo, item_repo)
-    return await query.execute(user_id)
-
-
-@router.put("/draws/{draw_id}/resolve", response_model=BucketDrawResponse)
-async def resolve_draw(
-    draw_id: uuid.UUID,
-    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> BucketDrawResponse:
-    """Resolve (complete) a bucket draw.
-
-    Args:
-        draw_id: The UUID of the draw to resolve.
-        user_id: The authenticated user's UUID.
-        session: Database session.
-
-    Returns:
-        BucketDrawResponse with the resolved draw.
-    """
-    item_repo = SqlAlchemyBucketItemRepository(session)
-    draw_repo = SqlAlchemyBucketDrawRepository(session)
-    draw_service = BucketDrawService()
-    command = ResolveDrawCommand(item_repo, draw_repo, draw_service)
-    return await command.execute(ResolveDrawInput(user_id=user_id, draw_id=draw_id))
-
-
-@router.put("/draws/{draw_id}/return", response_model=BucketDrawResponse)
-async def return_draw(
-    draw_id: uuid.UUID,
-    body: ReturnDrawRequest,
-    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> BucketDrawResponse:
-    """Return a bucket draw with a justification.
-
-    Args:
-        draw_id: The UUID of the draw to return.
-        body: Return request with justification.
-        user_id: The authenticated user's UUID.
-        session: Database session.
-
-    Returns:
-        BucketDrawResponse with the returned draw.
-    """
-    item_repo = SqlAlchemyBucketItemRepository(session)
-    draw_repo = SqlAlchemyBucketDrawRepository(session)
-    draw_service = BucketDrawService()
-    command = ReturnDrawCommand(item_repo, draw_repo, draw_service)
+    settings_repo = SqlAlchemyBucketSettingsRepository(session)
+    command = MoveBucketItemCommand(item_repo, settings_repo, BucketKanbanService())
     return await command.execute(
-        ReturnDrawInput(user_id=user_id, draw_id=draw_id, request=body)
+        MoveBucketItemInput(
+            user_id=user_id,
+            kind=_to_kind(kind),
+            item_id=item_id,
+            request=body,
+        )
+    )
+
+
+@router.post("/{kind}/draw", response_model=DrawSuggestionResponse)
+async def draw_suggestion(
+    kind: _KindPath,
+    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> DrawSuggestionResponse:
+    """Suggest a random TO_DO item on the given board (no state change)."""
+    item_repo = SqlAlchemyBucketItemRepository(session)
+    settings_repo = SqlAlchemyBucketSettingsRepository(session)
+    query = DrawSuggestionQuery(item_repo, settings_repo, BucketKanbanService())
+    return await query.execute(
+        BucketBoardQueryInput(user_id=user_id, kind=_to_kind(kind))
+    )
+
+
+@router.get("/{kind}/settings", response_model=BucketSettingsResponse)
+async def get_settings(
+    kind: _KindPath,
+    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BucketSettingsResponse:
+    """Get the user's settings for the given board (default values if absent)."""
+    settings_repo = SqlAlchemyBucketSettingsRepository(session)
+    query = GetBucketSettingsQuery(settings_repo)
+    return await query.execute(
+        BucketBoardQueryInput(user_id=user_id, kind=_to_kind(kind))
+    )
+
+
+@router.put("/{kind}/settings", response_model=BucketSettingsResponse)
+async def update_settings(
+    kind: _KindPath,
+    body: UpdateBucketSettingsRequest,
+    user_id: Annotated[uuid.UUID, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BucketSettingsResponse:
+    """Update the user's settings (max_in_progress) for the given board."""
+    settings_repo = SqlAlchemyBucketSettingsRepository(session)
+    command = UpdateBucketSettingsCommand(settings_repo, BucketSettingsService())
+    return await command.execute(
+        UpdateBucketSettingsInput(user_id=user_id, kind=_to_kind(kind), request=body)
     )

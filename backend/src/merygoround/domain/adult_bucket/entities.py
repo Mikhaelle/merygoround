@@ -1,26 +1,41 @@
-"""Entities for the Adult Bucket bounded context."""
+"""Entities and value objects for the Adult Bucket bounded context."""
 
 from __future__ import annotations
 
 import enum
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from merygoround.domain.shared.entity import AggregateRoot, Entity
+from merygoround.domain.shared.entity import AggregateRoot
 
 
-class DrawStatus(enum.Enum):
-    """Status of a bucket draw."""
+class KanbanStatus(enum.Enum):
+    """Kanban column where a bucket item currently lives."""
 
-    ACTIVE = "active"
-    RESOLVED = "resolved"
-    RETURNED = "returned"
+    TO_DO = "to_do"
+    IN_PROGRESS = "in_progress"
+    BLOCKED = "blocked"
+    DONE = "done"
+
+
+class BucketKind(enum.Enum):
+    """Distinguishes which user-facing board a bucket item belongs to.
+
+    'adult' is the original Adult Bucket (life admin tasks).
+    'happy' is the Balde Feliz (lighter / fun tasks) introduced later.
+    """
+
+    ADULT = "adult"
+    HAPPY = "happy"
+
+
+DEFAULT_MAX_IN_PROGRESS = 2
 
 
 @dataclass
 class BucketItem(AggregateRoot):
-    """Represents an adult life task in the bucket.
+    """Represents an adult life task on the Kanban board.
 
     Args:
         id: Unique identifier.
@@ -28,6 +43,9 @@ class BucketItem(AggregateRoot):
         name: Display name of the task.
         description: Detailed description of the task.
         category: Optional categorization label.
+        status: Kanban column the item currently belongs to.
+        started_at: Timestamp the item entered IN_PROGRESS for the first time.
+        completed_at: Timestamp the item entered DONE for the first time.
         created_at: Timestamp of creation.
         updated_at: Timestamp of last modification.
     """
@@ -37,28 +55,29 @@ class BucketItem(AggregateRoot):
     name: str = ""
     description: str = ""
     category: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    status: KanbanStatus = KanbanStatus.TO_DO
+    kind: BucketKind = BucketKind.ADULT
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
-class BucketDraw(Entity):
-    """Records a single draw from the bucket.
+class BucketSettings(AggregateRoot):
+    """Per-user Kanban settings.
 
     Args:
         id: Unique identifier.
-        bucket_item_id: The drawn bucket item.
-        user_id: The user who performed the draw.
-        drawn_at: Timestamp of the draw.
-        status: Current status of the draw.
-        resolved_at: Timestamp when the draw was resolved.
-        return_justification: Reason for returning the draw.
+        user_id: Owner of the settings.
+        max_in_progress: Maximum number of items allowed in IN_PROGRESS at once.
+        created_at: Timestamp of creation.
+        updated_at: Timestamp of last modification.
     """
 
     id: uuid.UUID = field(default_factory=uuid.uuid4)
-    bucket_item_id: uuid.UUID = field(default_factory=uuid.uuid4)
     user_id: uuid.UUID = field(default_factory=uuid.uuid4)
-    drawn_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    status: DrawStatus = DrawStatus.ACTIVE
-    resolved_at: datetime | None = None
-    return_justification: str | None = None
+    kind: BucketKind = BucketKind.ADULT
+    max_in_progress: int = DEFAULT_MAX_IN_PROGRESS
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

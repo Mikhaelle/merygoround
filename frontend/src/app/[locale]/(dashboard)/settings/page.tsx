@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useTranslations, useLocale } from "next-intl";
 import { useRouter, usePathname } from "@/i18n/navigation";
 import { useNotifications } from "@/lib/hooks/use-notifications";
+import { BucketSettingsCard } from "@/components/bucket/bucket-settings-card";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -211,6 +212,9 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      <BucketSettingsCard kind="adult" titleNamespace="bucket" />
+      <BucketSettingsCard kind="happy" titleNamespace="happyBucket" />
 
       <Card>
         <CardHeader>

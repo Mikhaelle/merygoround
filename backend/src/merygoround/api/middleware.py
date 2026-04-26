@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Request
+from typing import TYPE_CHECKING
+
 from fastapi.responses import JSONResponse
 
 from merygoround.domain.adult_bucket.exceptions import (
-    ActiveDrawExistsError,
     BucketItemNotFoundError,
-    DrawNotActiveError,
-    JustificationTooShortError,
+    InvalidMaxInProgressError,
+    MaxInProgressReachedError,
     NoBucketItemsError,
 )
 from merygoround.domain.chores.exceptions import ChoreNotFoundError
@@ -27,6 +27,9 @@ from merygoround.domain.shared.exceptions import (
 )
 from merygoround.domain.wheel.exceptions import NoChoresAvailableError
 
+if TYPE_CHECKING:
+    from fastapi import FastAPI, Request
+
 _NOT_FOUND_EXCEPTIONS = (
     EntityNotFoundError,
     UserNotFoundError,
@@ -37,15 +40,14 @@ _NOT_FOUND_EXCEPTIONS = (
 
 _CONFLICT_EXCEPTIONS = (
     DuplicateEmailError,
-    ActiveDrawExistsError,
+    MaxInProgressReachedError,
 )
 
 _BAD_REQUEST_EXCEPTIONS = (
     ValidationError,
-    DrawNotActiveError,
-    JustificationTooShortError,
     NoBucketItemsError,
     NoChoresAvailableError,
+    InvalidMaxInProgressError,
 )
 
 _UNAUTHORIZED_EXCEPTIONS = (

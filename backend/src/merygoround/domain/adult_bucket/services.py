@@ -3,100 +3,109 @@
 from __future__ import annotations
 
 import random
-import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from merygoround.domain.adult_bucket.entities import BucketDraw, BucketItem, DrawStatus
+from merygoround.domain.adult_bucket.entities import BucketItem, KanbanStatus
 from merygoround.domain.adult_bucket.exceptions import (
-    ActiveDrawExistsError,
-    DrawNotActiveError,
-    JustificationTooShortError,
+    InvalidMaxInProgressError,
+    MaxInProgressReachedError,
     NoBucketItemsError,
 )
 
 
-class BucketDrawService:
-    """Pure domain service that manages bucket draw operations.
+class BucketKanbanService:
+    """Pure domain service implementing the Kanban board rules.
 
-    Enforces the invariant that at most one ACTIVE draw may exist per user.
+    Enforces a per-user maximum of items in IN_PROGRESS but otherwise allows free
+    movement between columns (TO_DO, IN_PROGRESS, BLOCKED, DONE).
     """
 
-    def draw(
+    def move(
         self,
-        user_id: uuid.UUID,
-        active_draw: BucketDraw | None,
-        available_items: list[BucketItem],
-    ) -> BucketDraw:
-        """Draw a random item from the bucket.
+        item: BucketItem,
+        new_status: KanbanStatus,
+        in_progress_count: int,
+        max_in_progress: int,
+    ) -> BucketItem:
+        """Transition a bucket item to a new Kanban column.
 
         Args:
-            user_id: The user performing the draw.
-            active_draw: The user's current active draw, or None.
-            available_items: Items eligible for drawing.
+            item: The BucketItem to move.
+            new_status: Destination Kanban column.
+            in_progress_count: Current count of IN_PROGRESS items for the user
+                (excluding the item being moved).
+            max_in_progress: Configured per-user maximum for IN_PROGRESS.
 
         Returns:
-            A new BucketDraw with ACTIVE status.
+            The mutated BucketItem with the new status and timestamps.
 
         Raises:
-            ActiveDrawExistsError: If the user already has an active draw.
-            NoBucketItemsError: If no items are available for drawing.
+            MaxInProgressReachedError: If moving into IN_PROGRESS would exceed the
+                configured limit.
         """
-        if active_draw is not None:
-            raise ActiveDrawExistsError()
+        if (
+            new_status == KanbanStatus.IN_PROGRESS
+            and item.status != KanbanStatus.IN_PROGRESS
+            and in_progress_count >= max_in_progress
+        ):
+            raise MaxInProgressReachedError(max_in_progress)
 
-        if not available_items:
+        now = datetime.now(UTC)
+
+        if new_status == KanbanStatus.IN_PROGRESS and item.started_at is None:
+            item.started_at = now
+        if new_status == KanbanStatus.DONE and item.completed_at is None:
+            item.completed_at = now
+
+        item.status = new_status
+        item.updated_at = now
+        return item
+
+    def draw_suggestion(
+        self,
+        to_do_items: list[BucketItem],
+        in_progress_count: int,
+        max_in_progress: int,
+    ) -> BucketItem:
+        """Pick a random TO_DO item to suggest to the user.
+
+        Does not mutate any state. Caller may then move the item via ``move``.
+
+        Args:
+            to_do_items: All items currently in the TO_DO column.
+            in_progress_count: Current count of IN_PROGRESS items for the user.
+            max_in_progress: Configured per-user maximum for IN_PROGRESS.
+
+        Returns:
+            A randomly selected BucketItem from the TO_DO list.
+
+        Raises:
+            MaxInProgressReachedError: If the user already has the maximum
+                allowed items in progress (no point suggesting a new draw).
+            NoBucketItemsError: If there are no TO_DO items to suggest.
+        """
+        if in_progress_count >= max_in_progress:
+            raise MaxInProgressReachedError(max_in_progress)
+        if not to_do_items:
             raise NoBucketItemsError()
+        return random.choice(to_do_items)
 
-        selected_item = random.choice(available_items)
 
-        return BucketDraw(
-            id=uuid.uuid4(),
-            bucket_item_id=selected_item.id,
-            user_id=user_id,
-            drawn_at=datetime.now(timezone.utc),
-            status=DrawStatus.ACTIVE,
-        )
+class BucketSettingsService:
+    """Pure domain service that validates BucketSettings invariants."""
 
-    def resolve(self, draw: BucketDraw) -> BucketDraw:
-        """Mark a draw as resolved (task completed).
+    def validate_max_in_progress(self, value: int) -> int:
+        """Ensure ``max_in_progress`` is a positive integer.
 
         Args:
-            draw: The draw to resolve.
+            value: Candidate maximum value.
 
         Returns:
-            The updated BucketDraw with RESOLVED status.
+            The validated integer.
 
         Raises:
-            DrawNotActiveError: If the draw is not in ACTIVE status.
+            InvalidMaxInProgressError: If ``value`` is not a positive integer.
         """
-        if draw.status != DrawStatus.ACTIVE:
-            raise DrawNotActiveError()
-
-        draw.status = DrawStatus.RESOLVED
-        draw.resolved_at = datetime.now(timezone.utc)
-        return draw
-
-    def return_draw(self, draw: BucketDraw, justification: str) -> BucketDraw:
-        """Return a draw to the bucket with a justification.
-
-        Args:
-            draw: The draw to return.
-            justification: Reason for returning (minimum 10 characters).
-
-        Returns:
-            The updated BucketDraw with RETURNED status.
-
-        Raises:
-            DrawNotActiveError: If the draw is not in ACTIVE status.
-            JustificationTooShortError: If justification is shorter than 10 characters.
-        """
-        if draw.status != DrawStatus.ACTIVE:
-            raise DrawNotActiveError()
-
-        if len(justification.strip()) < 10:
-            raise JustificationTooShortError()
-
-        draw.status = DrawStatus.RETURNED
-        draw.resolved_at = datetime.now(timezone.utc)
-        draw.return_justification = justification.strip()
-        return draw
+        if not isinstance(value, int) or value < 1:
+            raise InvalidMaxInProgressError()
+        return value

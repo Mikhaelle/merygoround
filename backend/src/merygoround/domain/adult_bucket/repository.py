@@ -2,139 +2,69 @@
 
 from __future__ import annotations
 
-import uuid
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-from merygoround.domain.adult_bucket.entities import BucketDraw, BucketItem
+if TYPE_CHECKING:
+    import uuid
+
+    from merygoround.domain.adult_bucket.entities import (
+        BucketItem,
+        BucketKind,
+        BucketSettings,
+        KanbanStatus,
+    )
 
 
 class BucketItemRepository(ABC):
-    """Abstract repository for BucketItem aggregate persistence."""
+    """Abstract repository for BucketItem aggregate persistence.
+
+    All listing queries are scoped by ``(user_id, kind)`` so the same table can
+    host multiple Kanban boards (e.g. 'adult' and 'happy') for the same user.
+    """
 
     @abstractmethod
     async def get_by_id(self, item_id: uuid.UUID) -> BucketItem | None:
-        """Retrieve a bucket item by its unique identifier.
-
-        Args:
-            item_id: The UUID of the bucket item.
-
-        Returns:
-            The BucketItem if found, otherwise None.
-        """
+        """Retrieve a bucket item by its unique identifier (no kind filter)."""
 
     @abstractmethod
-    async def get_by_user_id(self, user_id: uuid.UUID) -> list[BucketItem]:
-        """Retrieve all bucket items belonging to a user.
-
-        Args:
-            user_id: The UUID of the owning user.
-
-        Returns:
-            List of BucketItem entities.
-        """
+    async def get_by_user_and_kind(
+        self, user_id: uuid.UUID, kind: BucketKind
+    ) -> list[BucketItem]:
+        """Retrieve all bucket items belonging to ``user_id`` for the given kind."""
 
     @abstractmethod
-    async def get_available_for_draw(self, user_id: uuid.UUID) -> list[BucketItem]:
-        """Retrieve bucket items eligible for drawing.
+    async def count_in_progress(self, user_id: uuid.UUID, kind: BucketKind) -> int:
+        """Count IN_PROGRESS items for a user on a given board."""
 
-        Excludes items that have been resolved in a previous draw.
-
-        Args:
-            user_id: The UUID of the owning user.
-
-        Returns:
-            List of BucketItem entities available for drawing.
-        """
+    @abstractmethod
+    async def get_to_do_for_user_and_kind(
+        self, user_id: uuid.UUID, kind: BucketKind
+    ) -> list[BucketItem]:
+        """Retrieve all TO_DO items for the user on the given board."""
 
     @abstractmethod
     async def add(self, item: BucketItem) -> BucketItem:
-        """Persist a new bucket item.
-
-        Args:
-            item: The BucketItem entity to persist.
-
-        Returns:
-            The persisted BucketItem.
-        """
+        """Persist a new bucket item."""
 
     @abstractmethod
     async def update(self, item: BucketItem) -> BucketItem:
-        """Update an existing bucket item.
-
-        Args:
-            item: The BucketItem entity with updated state.
-
-        Returns:
-            The updated BucketItem.
-        """
+        """Update an existing bucket item."""
 
     @abstractmethod
     async def delete(self, item_id: uuid.UUID) -> None:
-        """Remove a bucket item by its unique identifier.
-
-        Args:
-            item_id: The UUID of the bucket item to remove.
-        """
+        """Remove a bucket item by its unique identifier."""
 
 
-class BucketDrawRepository(ABC):
-    """Abstract repository for BucketDraw persistence."""
+class BucketSettingsRepository(ABC):
+    """Abstract repository for per-user-and-kind BucketSettings persistence."""
 
     @abstractmethod
-    async def get_by_id(self, draw_id: uuid.UUID) -> BucketDraw | None:
-        """Retrieve a bucket draw by its unique identifier.
-
-        Args:
-            draw_id: The UUID of the bucket draw.
-
-        Returns:
-            The BucketDraw if found, otherwise None.
-        """
+    async def get_by_user_and_kind(
+        self, user_id: uuid.UUID, kind: BucketKind
+    ) -> BucketSettings | None:
+        """Retrieve the settings for a user on a given board, if persisted."""
 
     @abstractmethod
-    async def get_active_by_user_id(self, user_id: uuid.UUID) -> BucketDraw | None:
-        """Retrieve the current active draw for a user.
-
-        Args:
-            user_id: The UUID of the user.
-
-        Returns:
-            The active BucketDraw if one exists, otherwise None.
-        """
-
-    @abstractmethod
-    async def get_by_user_id(
-        self, user_id: uuid.UUID, page: int = 1, per_page: int = 20
-    ) -> tuple[list[BucketDraw], int]:
-        """Retrieve paginated bucket draws for a user.
-
-        Args:
-            user_id: The UUID of the user.
-            page: Page number (1-indexed).
-            per_page: Number of items per page.
-
-        Returns:
-            Tuple of (list of BucketDraw entities, total count).
-        """
-
-    @abstractmethod
-    async def add(self, draw: BucketDraw) -> BucketDraw:
-        """Persist a new bucket draw.
-
-        Args:
-            draw: The BucketDraw entity to persist.
-
-        Returns:
-            The persisted BucketDraw.
-        """
-
-    @abstractmethod
-    async def update(self, draw: BucketDraw) -> BucketDraw:
-        """Update an existing bucket draw.
-
-        Args:
-            draw: The BucketDraw entity with updated state.
-
-        Returns:
-            The updated BucketDraw.
-        """
+    async def upsert(self, settings: BucketSettings) -> BucketSettings:
+        """Insert or update the settings for a user-and-kind tuple."""

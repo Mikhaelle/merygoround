@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+KanbanStatusLiteral = Literal["to_do", "in_progress", "blocked", "done"]
+BucketKindLiteral = Literal["adult", "happy"]
 
 
 class CreateBucketItemRequest(BaseModel):
@@ -38,6 +42,16 @@ class UpdateBucketItemRequest(BaseModel):
     category: str | None = None
 
 
+class MoveBucketItemRequest(BaseModel):
+    """Request DTO for moving a bucket item between Kanban columns.
+
+    Attributes:
+        status: Destination Kanban status.
+    """
+
+    status: KanbanStatusLiteral
+
+
 class BucketItemResponse(BaseModel):
     """Response DTO representing a bucket item.
 
@@ -46,6 +60,9 @@ class BucketItemResponse(BaseModel):
         name: Display name.
         description: Detailed description.
         category: Category label (if any).
+        status: Current Kanban column.
+        started_at: First time the item entered IN_PROGRESS, if ever.
+        completed_at: First time the item entered DONE, if ever.
         created_at: Creation timestamp.
         updated_at: Last modification timestamp.
     """
@@ -54,37 +71,41 @@ class BucketItemResponse(BaseModel):
     name: str
     description: str
     category: str | None
+    status: KanbanStatusLiteral
+    kind: BucketKindLiteral
+    started_at: datetime | None
+    completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
-class BucketDrawResponse(BaseModel):
-    """Response DTO representing a bucket draw.
+class DrawSuggestionResponse(BaseModel):
+    """Response DTO for a random TO_DO suggestion (read-only, no state change).
 
     Attributes:
-        id: Draw unique identifier.
-        item: The drawn bucket item.
-        drawn_at: Timestamp of the draw.
-        status: Current status of the draw.
-        resolved_at: Timestamp of resolution (if applicable).
-        return_justification: Return reason (if applicable).
+        item: The suggested bucket item.
     """
 
-    id: uuid.UUID
     item: BucketItemResponse
-    drawn_at: datetime
-    status: str
-    resolved_at: datetime | None
-    return_justification: str | None
 
 
-class ReturnDrawRequest(BaseModel):
-    """Request DTO for returning a bucket draw.
+class BucketSettingsResponse(BaseModel):
+    """Response DTO representing the per-user Kanban settings.
 
     Attributes:
-        justification: Reason for returning (minimum 10 characters).
+        max_in_progress: Maximum allowed items in IN_PROGRESS at the same time.
     """
 
-    justification: str = Field(min_length=10, max_length=2000)
+    max_in_progress: int
+
+
+class UpdateBucketSettingsRequest(BaseModel):
+    """Request DTO for updating per-user Kanban settings.
+
+    Attributes:
+        max_in_progress: Maximum allowed items in IN_PROGRESS (>= 1).
+    """
+
+    max_in_progress: int = Field(ge=1, le=99)

@@ -2,31 +2,42 @@
 
 from __future__ import annotations
 
-import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from merygoround.application.adult_bucket.dtos import (
-    BucketDrawResponse,
     BucketItemResponse,
-    ReturnDrawRequest,
+    BucketSettingsResponse,
 )
 from merygoround.application.shared.use_case import BaseCommand
-from merygoround.domain.adult_bucket.entities import BucketItem
+from merygoround.domain.adult_bucket.entities import (
+    DEFAULT_MAX_IN_PROGRESS,
+    BucketItem,
+    BucketKind,
+    BucketSettings,
+    KanbanStatus,
+)
 from merygoround.domain.adult_bucket.exceptions import BucketItemNotFoundError
-from merygoround.domain.shared.exceptions import AuthorizationError, EntityNotFoundError
+from merygoround.domain.shared.exceptions import AuthorizationError
 
 if TYPE_CHECKING:
+    import uuid
+
     from merygoround.application.adult_bucket.dtos import (
         CreateBucketItemRequest,
+        MoveBucketItemRequest,
         UpdateBucketItemRequest,
+        UpdateBucketSettingsRequest,
     )
     from merygoround.domain.adult_bucket.repository import (
-        BucketDrawRepository,
         BucketItemRepository,
+        BucketSettingsRepository,
     )
-    from merygoround.domain.adult_bucket.services import BucketDrawService
+    from merygoround.domain.adult_bucket.services import (
+        BucketKanbanService,
+        BucketSettingsService,
+    )
 
 
 def _item_to_response(item: BucketItem) -> BucketItemResponse:
@@ -36,6 +47,10 @@ def _item_to_response(item: BucketItem) -> BucketItemResponse:
         name=item.name,
         description=item.description,
         category=item.category,
+        status=item.status.value,  # type: ignore[arg-type]
+        kind=item.kind.value,  # type: ignore[arg-type]
+        started_at=item.started_at,
+        completed_at=item.completed_at,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -43,144 +58,99 @@ def _item_to_response(item: BucketItem) -> BucketItemResponse:
 
 @dataclass
 class CreateBucketItemInput:
-    """Input for CreateBucketItemCommand.
-
-    Attributes:
-        user_id: Owner of the new bucket item.
-        request: Item creation data.
-    """
+    """Input for CreateBucketItemCommand."""
 
     user_id: uuid.UUID
+    kind: BucketKind
     request: CreateBucketItemRequest
 
 
 @dataclass
 class UpdateBucketItemInput:
-    """Input for UpdateBucketItemCommand.
-
-    Attributes:
-        user_id: Requesting user.
-        item_id: ID of the item to update.
-        request: Item update data.
-    """
+    """Input for UpdateBucketItemCommand."""
 
     user_id: uuid.UUID
+    kind: BucketKind
     item_id: uuid.UUID
     request: UpdateBucketItemRequest
 
 
 @dataclass
 class DeleteBucketItemInput:
-    """Input for DeleteBucketItemCommand.
-
-    Attributes:
-        user_id: Requesting user.
-        item_id: ID of the item to delete.
-    """
+    """Input for DeleteBucketItemCommand."""
 
     user_id: uuid.UUID
+    kind: BucketKind
     item_id: uuid.UUID
 
 
 @dataclass
-class DrawFromBucketInput:
-    """Input for DrawFromBucketCommand.
-
-    Attributes:
-        user_id: The user performing the draw.
-    """
+class MoveBucketItemInput:
+    """Input for MoveBucketItemCommand."""
 
     user_id: uuid.UUID
+    kind: BucketKind
+    item_id: uuid.UUID
+    request: MoveBucketItemRequest
 
 
 @dataclass
-class ResolveDrawInput:
-    """Input for ResolveDrawCommand.
-
-    Attributes:
-        user_id: The requesting user.
-        draw_id: ID of the draw to resolve.
-    """
+class UpdateBucketSettingsInput:
+    """Input for UpdateBucketSettingsCommand."""
 
     user_id: uuid.UUID
-    draw_id: uuid.UUID
+    kind: BucketKind
+    request: UpdateBucketSettingsRequest
 
 
-@dataclass
-class ReturnDrawInput:
-    """Input for ReturnDrawCommand.
+def _ensure_owner_and_kind(
+    item: BucketItem | None, user_id: uuid.UUID, kind: BucketKind, item_id: uuid.UUID
+) -> BucketItem:
+    """Raise the right exception if the item is missing or off-board.
 
-    Attributes:
-        user_id: The requesting user.
-        draw_id: ID of the draw to return.
-        request: Return justification data.
+    Items from another kind are surfaced as 404 (BucketItemNotFoundError) to avoid
+    leaking the existence of items belonging to a different board for the same user.
     """
-
-    user_id: uuid.UUID
-    draw_id: uuid.UUID
-    request: ReturnDrawRequest
+    if item is None or item.kind != kind:
+        raise BucketItemNotFoundError(str(item_id))
+    if item.user_id != user_id:
+        raise AuthorizationError("You do not own this bucket item")
+    return item
 
 
 class CreateBucketItemCommand(BaseCommand[CreateBucketItemInput, BucketItemResponse]):
-    """Creates a new bucket item for the authenticated user.
-
-    Args:
-        item_repo: Bucket item repository for persistence.
-    """
+    """Creates a new bucket item for the authenticated user on the given board."""
 
     def __init__(self, item_repo: BucketItemRepository) -> None:
         self._item_repo = item_repo
 
     async def execute(self, input_data: CreateBucketItemInput) -> BucketItemResponse:
-        """Create and persist a new bucket item.
-
-        Args:
-            input_data: Contains the user ID and creation request.
-
-        Returns:
-            BucketItemResponse representing the created item.
-        """
         req = input_data.request
         item = BucketItem(
             user_id=input_data.user_id,
             name=req.name,
             description=req.description,
             category=req.category,
+            status=KanbanStatus.TO_DO,
+            kind=input_data.kind,
         )
         item = await self._item_repo.add(item)
         return _item_to_response(item)
 
 
 class UpdateBucketItemCommand(BaseCommand[UpdateBucketItemInput, BucketItemResponse]):
-    """Updates an existing bucket item.
-
-    Args:
-        item_repo: Bucket item repository for persistence.
-    """
+    """Updates an existing bucket item's editable fields."""
 
     def __init__(self, item_repo: BucketItemRepository) -> None:
         self._item_repo = item_repo
 
     async def execute(self, input_data: UpdateBucketItemInput) -> BucketItemResponse:
-        """Update an existing bucket item with the provided fields.
-
-        Args:
-            input_data: Contains the user ID, item ID, and update request.
-
-        Returns:
-            BucketItemResponse representing the updated item.
-
-        Raises:
-            BucketItemNotFoundError: If the item does not exist.
-            AuthorizationError: If the user does not own the item.
-        """
-        item = await self._item_repo.get_by_id(input_data.item_id)
-        if item is None:
-            raise BucketItemNotFoundError(str(input_data.item_id))
-
-        if item.user_id != input_data.user_id:
-            raise AuthorizationError("You do not own this bucket item")
-
+        item = _ensure_owner_and_kind(
+            await self._item_repo.get_by_id(input_data.item_id),
+            input_data.user_id,
+            input_data.kind,
+            input_data.item_id,
+        )
         req = input_data.request
         if req.name is not None:
             item.name = req.name
@@ -189,195 +159,104 @@ class UpdateBucketItemCommand(BaseCommand[UpdateBucketItemInput, BucketItemRespo
         if req.category is not None:
             item.category = req.category
 
-        item.updated_at = datetime.now(timezone.utc)
+        item.updated_at = datetime.now(UTC)
         item = await self._item_repo.update(item)
         return _item_to_response(item)
 
 
 class DeleteBucketItemCommand(BaseCommand[DeleteBucketItemInput, None]):
-    """Deletes an existing bucket item.
-
-    Args:
-        item_repo: Bucket item repository for persistence.
-    """
+    """Deletes an existing bucket item."""
 
     def __init__(self, item_repo: BucketItemRepository) -> None:
         self._item_repo = item_repo
 
     async def execute(self, input_data: DeleteBucketItemInput) -> None:
-        """Delete a bucket item by its ID.
-
-        Args:
-            input_data: Contains the user ID and item ID.
-
-        Raises:
-            BucketItemNotFoundError: If the item does not exist.
-            AuthorizationError: If the user does not own the item.
-        """
-        item = await self._item_repo.get_by_id(input_data.item_id)
-        if item is None:
-            raise BucketItemNotFoundError(str(input_data.item_id))
-
-        if item.user_id != input_data.user_id:
-            raise AuthorizationError("You do not own this bucket item")
-
+        _ensure_owner_and_kind(
+            await self._item_repo.get_by_id(input_data.item_id),
+            input_data.user_id,
+            input_data.kind,
+            input_data.item_id,
+        )
         await self._item_repo.delete(input_data.item_id)
 
 
-class DrawFromBucketCommand(BaseCommand[DrawFromBucketInput, BucketDrawResponse]):
-    """Draws a random item from the bucket.
-
-    Args:
-        item_repo: Bucket item repository for loading items.
-        draw_repo: Bucket draw repository for persistence.
-        draw_service: Domain service for draw logic.
-    """
+class MoveBucketItemCommand(BaseCommand[MoveBucketItemInput, BucketItemResponse]):
+    """Moves a bucket item to a different Kanban column on the given board."""
 
     def __init__(
         self,
         item_repo: BucketItemRepository,
-        draw_repo: BucketDrawRepository,
-        draw_service: BucketDrawService,
+        settings_repo: BucketSettingsRepository,
+        kanban_service: BucketKanbanService,
     ) -> None:
         self._item_repo = item_repo
-        self._draw_repo = draw_repo
-        self._draw_service = draw_service
+        self._settings_repo = settings_repo
+        self._kanban_service = kanban_service
 
-    async def execute(self, input_data: DrawFromBucketInput) -> BucketDrawResponse:
-        """Draw a random item and persist the draw.
+    async def execute(self, input_data: MoveBucketItemInput) -> BucketItemResponse:
+        item = _ensure_owner_and_kind(
+            await self._item_repo.get_by_id(input_data.item_id),
+            input_data.user_id,
+            input_data.kind,
+            input_data.item_id,
+        )
+        new_status = KanbanStatus(input_data.request.status)
 
-        Args:
-            input_data: Contains the user ID.
-
-        Returns:
-            BucketDrawResponse with the drawn item.
-
-        Raises:
-            ActiveDrawExistsError: If the user already has an active draw.
-            NoBucketItemsError: If no items are available.
-        """
-        active_draw = await self._draw_repo.get_active_by_user_id(input_data.user_id)
-        available_items = await self._item_repo.get_available_for_draw(input_data.user_id)
-
-        draw = self._draw_service.draw(input_data.user_id, active_draw, available_items)
-        draw = await self._draw_repo.add(draw)
-
-        item = await self._item_repo.get_by_id(draw.bucket_item_id)
-        if item is None:
-            raise BucketItemNotFoundError(str(draw.bucket_item_id))
-
-        return BucketDrawResponse(
-            id=draw.id,
-            item=_item_to_response(item),
-            drawn_at=draw.drawn_at,
-            status=draw.status.value,
-            resolved_at=draw.resolved_at,
-            return_justification=draw.return_justification,
+        settings = await self._settings_repo.get_by_user_and_kind(
+            input_data.user_id, input_data.kind
+        )
+        max_in_progress = (
+            settings.max_in_progress if settings is not None else DEFAULT_MAX_IN_PROGRESS
         )
 
+        in_progress_count = await self._item_repo.count_in_progress(
+            input_data.user_id, input_data.kind
+        )
+        if item.status == KanbanStatus.IN_PROGRESS:
+            in_progress_count = max(in_progress_count - 1, 0)
 
-class ResolveDrawCommand(BaseCommand[ResolveDrawInput, BucketDrawResponse]):
-    """Marks a bucket draw as resolved.
+        item = self._kanban_service.move(
+            item,
+            new_status=new_status,
+            in_progress_count=in_progress_count,
+            max_in_progress=max_in_progress,
+        )
+        item = await self._item_repo.update(item)
+        return _item_to_response(item)
 
-    Args:
-        item_repo: Bucket item repository for item lookup.
-        draw_repo: Bucket draw repository for persistence.
-        draw_service: Domain service for resolve logic.
-    """
+
+class UpdateBucketSettingsCommand(
+    BaseCommand[UpdateBucketSettingsInput, BucketSettingsResponse]
+):
+    """Updates the per-user-and-kind Kanban settings."""
 
     def __init__(
         self,
-        item_repo: BucketItemRepository,
-        draw_repo: BucketDrawRepository,
-        draw_service: BucketDrawService,
+        settings_repo: BucketSettingsRepository,
+        settings_service: BucketSettingsService,
     ) -> None:
-        self._item_repo = item_repo
-        self._draw_repo = draw_repo
-        self._draw_service = draw_service
+        self._settings_repo = settings_repo
+        self._settings_service = settings_service
 
-    async def execute(self, input_data: ResolveDrawInput) -> BucketDrawResponse:
-        """Resolve a bucket draw.
-
-        Args:
-            input_data: Contains the user ID and draw ID.
-
-        Returns:
-            BucketDrawResponse with the resolved draw.
-
-        Raises:
-            EntityNotFoundError: If the draw does not exist.
-            DrawNotActiveError: If the draw is not in ACTIVE status.
-        """
-        draw = await self._draw_repo.get_by_id(input_data.draw_id)
-        if draw is None:
-            raise EntityNotFoundError("BucketDraw", str(input_data.draw_id))
-
-        draw = self._draw_service.resolve(draw)
-        draw = await self._draw_repo.update(draw)
-
-        item = await self._item_repo.get_by_id(draw.bucket_item_id)
-        if item is None:
-            raise BucketItemNotFoundError(str(draw.bucket_item_id))
-
-        return BucketDrawResponse(
-            id=draw.id,
-            item=_item_to_response(item),
-            drawn_at=draw.drawn_at,
-            status=draw.status.value,
-            resolved_at=draw.resolved_at,
-            return_justification=draw.return_justification,
+    async def execute(
+        self, input_data: UpdateBucketSettingsInput
+    ) -> BucketSettingsResponse:
+        max_in_progress = self._settings_service.validate_max_in_progress(
+            input_data.request.max_in_progress
         )
 
-
-class ReturnDrawCommand(BaseCommand[ReturnDrawInput, BucketDrawResponse]):
-    """Returns a bucket draw to the bucket with a justification.
-
-    Args:
-        item_repo: Bucket item repository for item lookup.
-        draw_repo: Bucket draw repository for persistence.
-        draw_service: Domain service for return logic.
-    """
-
-    def __init__(
-        self,
-        item_repo: BucketItemRepository,
-        draw_repo: BucketDrawRepository,
-        draw_service: BucketDrawService,
-    ) -> None:
-        self._item_repo = item_repo
-        self._draw_repo = draw_repo
-        self._draw_service = draw_service
-
-    async def execute(self, input_data: ReturnDrawInput) -> BucketDrawResponse:
-        """Return a bucket draw with justification.
-
-        Args:
-            input_data: Contains the user ID, draw ID, and justification.
-
-        Returns:
-            BucketDrawResponse with the returned draw.
-
-        Raises:
-            EntityNotFoundError: If the draw does not exist.
-            DrawNotActiveError: If the draw is not in ACTIVE status.
-            JustificationTooShortError: If justification is too short.
-        """
-        draw = await self._draw_repo.get_by_id(input_data.draw_id)
-        if draw is None:
-            raise EntityNotFoundError("BucketDraw", str(input_data.draw_id))
-
-        draw = self._draw_service.return_draw(draw, input_data.request.justification)
-        draw = await self._draw_repo.update(draw)
-
-        item = await self._item_repo.get_by_id(draw.bucket_item_id)
-        if item is None:
-            raise BucketItemNotFoundError(str(draw.bucket_item_id))
-
-        return BucketDrawResponse(
-            id=draw.id,
-            item=_item_to_response(item),
-            drawn_at=draw.drawn_at,
-            status=draw.status.value,
-            resolved_at=draw.resolved_at,
-            return_justification=draw.return_justification,
+        settings = await self._settings_repo.get_by_user_and_kind(
+            input_data.user_id, input_data.kind
         )
+        if settings is None:
+            settings = BucketSettings(
+                user_id=input_data.user_id,
+                kind=input_data.kind,
+                max_in_progress=max_in_progress,
+            )
+        else:
+            settings.max_in_progress = max_in_progress
+            settings.updated_at = datetime.now(UTC)
+
+        settings = await self._settings_repo.upsert(settings)
+        return BucketSettingsResponse(max_in_progress=settings.max_in_progress)

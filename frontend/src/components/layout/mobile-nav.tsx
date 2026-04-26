@@ -3,12 +3,14 @@
 import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { cn } from "@/lib/utils";
-import { Disc3, ListChecks, Palette, Settings, Wallet } from "lucide-react";
+import { BarChart3, Disc3, ListChecks, Palette, Settings, Smile, Wallet } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/", icon: Disc3, labelKey: "home" as const },
+  { href: "/dashboard", icon: BarChart3, labelKey: "dashboard" as const },
   { href: "/chores", icon: ListChecks, labelKey: "chores" as const },
   { href: "/bucket", icon: Palette, labelKey: "bucket" as const },
+  { href: "/happy-bucket", icon: Smile, labelKey: "happyBucket" as const },
   { href: "/wallet", icon: Wallet, labelKey: "wallet" as const },
   { href: "/settings", icon: Settings, labelKey: "settings" as const },
 ];

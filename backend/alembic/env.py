@@ -15,8 +15,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from merygoround.infrastructure.database.models.base import Base
 from merygoround.infrastructure.database.models.bucket import (  # noqa: F401
-    BucketDrawModel,
     BucketItemModel,
+    BucketSettingsModel,
 )
 from merygoround.infrastructure.database.models.chore import ChoreModel  # noqa: F401
 from merygoround.infrastructure.database.models.notification import (  # noqa: F401
