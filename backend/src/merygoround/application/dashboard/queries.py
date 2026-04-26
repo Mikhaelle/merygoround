@@ -180,30 +180,37 @@ class GetDashboardQuery(BaseQuery[GetDashboardInput, DashboardResponse]):
     async def _compute_next_notification_minutes(
         self, user_id: uuid.UUID, now_local: datetime
     ) -> int | None:
-        """Estimate minutes until next push, or None when push is disabled."""
+        """Estimate minutes until the next push across all enabled devices.
+
+        Returns the soonest ETA among the user's enabled push subscriptions, or
+        None when no device is enabled.
+        """
         row = await self._session.execute(
             text(
                 """
-                SELECT enabled, interval_minutes, last_notified_at,
-                       quiet_hours_start, quiet_hours_end
-                FROM notification_preferences
-                WHERE user_id = :uid
+                SELECT interval_minutes, last_notified_at
+                FROM push_subscriptions
+                WHERE user_id = :uid AND enabled = true
                 """
             ),
             {"uid": user_id},
         )
-        record = row.first()
-        if record is None or not record.enabled:
+        records = row.fetchall()
+        if not records:
             return None
 
-        if record.last_notified_at is None:
-            return 0
-
-        last_local = record.last_notified_at.astimezone(now_local.tzinfo)
-        next_at = last_local + timedelta(minutes=record.interval_minutes)
-        delta = next_at - now_local
-        minutes = int(delta.total_seconds() // 60)
-        return max(0, minutes)
+        soonest: int | None = None
+        for record in records:
+            if record.last_notified_at is None:
+                eta = 0
+            else:
+                last_local = record.last_notified_at.astimezone(now_local.tzinfo)
+                next_at = last_local + timedelta(minutes=record.interval_minutes)
+                delta = next_at - now_local
+                eta = max(0, int(delta.total_seconds() // 60))
+            if soonest is None or eta < soonest:
+                soonest = eta
+        return soonest
 
     async def _build_productivity(
         self,

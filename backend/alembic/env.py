@@ -20,7 +20,6 @@ from merygoround.infrastructure.database.models.bucket import (  # noqa: F401
 )
 from merygoround.infrastructure.database.models.chore import ChoreModel  # noqa: F401
 from merygoround.infrastructure.database.models.notification import (  # noqa: F401
-    NotificationPreferenceModel,
     PushSubscriptionModel,
 )
 from merygoround.infrastructure.database.models.user import UserModel  # noqa: F401

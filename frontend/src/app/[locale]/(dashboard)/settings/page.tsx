@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -16,23 +17,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Bell, BellOff, Globe, Clock, Moon } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  Globe,
+  Clock,
+  Moon,
+  Send,
+  Smartphone,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { Locale } from "@/i18n/routing";
 
-/** Settings page for notifications, language, and quiet hours. */
+/** Settings page: per-device notifications, language, kanban max in progress. */
 export default function SettingsPage() {
   const t = useTranslations("settings");
   const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const {
-    preferences,
+    device,
+    otherDevices,
     permission,
-    requestPermission,
-    subscribeToPush,
-    unsubscribeFromPush,
+    enable,
+    disable,
     updatePreferences,
+    sendTest,
+    removeOtherDevice,
   } = useNotifications();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -40,26 +52,27 @@ export default function SettingsPage() {
   const handleToggleNotifications = useCallback(async () => {
     setIsSaving(true);
     try {
-      if (preferences?.enabled) {
-        await unsubscribeFromPush();
-        await updatePreferences({ enabled: false });
-        toast.success(t("saved"));
+      if (device?.enabled) {
+        await disable();
+        toast.success(t("notificationsDisabled"));
       } else {
-        const perm = await requestPermission();
-        if (perm === "denied") {
-          toast.error(t("notificationPermissionDenied"));
+        const result = await enable();
+        if (result === null) {
+          if (permission === "denied") {
+            toast.error(t("notificationPermissionDenied"));
+          } else {
+            toast.error(t("notificationPermissionDenied"));
+          }
           return;
         }
-        await subscribeToPush();
-        await updatePreferences({ enabled: true });
-        toast.success(t("saved"));
+        toast.success(t("notificationsEnabled"));
       }
     } catch {
       toast.error(t("saved"));
     } finally {
       setIsSaving(false);
     }
-  }, [preferences, requestPermission, subscribeToPush, unsubscribeFromPush, updatePreferences, t]);
+  }, [device, enable, disable, permission, t]);
 
   const handleIntervalChange = useCallback(
     async (value: string | null) => {
@@ -93,6 +106,18 @@ export default function SettingsPage() {
     [updatePreferences, t],
   );
 
+  const handleSendTest = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      await sendTest();
+      toast.success(t("testSent"));
+    } catch {
+      toast.error(t("testFailed"));
+    } finally {
+      setIsSaving(false);
+    }
+  }, [sendTest, t]);
+
   function switchLocale(newLocale: Locale) {
     router.replace(pathname, { locale: newLocale });
   }
@@ -105,7 +130,7 @@ export default function SettingsPage() {
         <CardHeader>
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900">
-              {preferences?.enabled ? (
+              {device?.enabled ? (
                 <Bell className="size-5 text-indigo-600 dark:text-indigo-400" />
               ) : (
                 <BellOff className="size-5 text-muted-foreground" />
@@ -113,29 +138,43 @@ export default function SettingsPage() {
             </div>
             <div>
               <CardTitle className="text-base">{t("notifications")}</CardTitle>
-              <CardDescription>{t("notificationsDescription")}</CardDescription>
+              <CardDescription>{t("notificationsThisDeviceDescription")}</CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
-            <Label>{preferences?.enabled ? t("enabled") : t("disabled")}</Label>
+            <div className="flex items-center gap-2">
+              <Smartphone className="size-4 text-muted-foreground" />
+              <Label>
+                {device?.device_label ?? t("thisDevice")}
+                {device?.enabled ? (
+                  <Badge variant="secondary" className="ml-2 bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                    {t("enabled")}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary" className="ml-2">
+                    {t("disabled")}
+                  </Badge>
+                )}
+              </Label>
+            </div>
             <Button
-              variant={preferences?.enabled ? "outline" : "default"}
+              variant={device?.enabled ? "outline" : "default"}
               size="sm"
               onClick={handleToggleNotifications}
               disabled={isSaving || permission === "denied"}
               className={
-                !preferences?.enabled
+                !device?.enabled
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white"
                   : ""
               }
             >
-              {preferences?.enabled ? t("disable") : t("enable")}
+              {device?.enabled ? t("disable") : t("enable")}
             </Button>
           </div>
 
-          {preferences?.enabled && (
+          {device?.enabled && (
             <>
               <Separator />
 
@@ -145,7 +184,7 @@ export default function SettingsPage() {
                   <Label>{t("interval")}</Label>
                 </div>
                 <Select
-                  value={String(preferences.interval_minutes || 60)}
+                  value={String(device.interval_minutes || 60)}
                   onValueChange={handleIntervalChange}
                 >
                   <SelectTrigger>
@@ -173,7 +212,7 @@ export default function SettingsPage() {
                   <div className="space-y-1">
                     <Label className="text-xs">{t("quietStart")}</Label>
                     <Select
-                      value={String(preferences.quiet_hours_start ?? 22)}
+                      value={String(device.quiet_hours_start ?? 22)}
                       onValueChange={(v) => handleQuietHoursChange("quiet_hours_start", v)}
                     >
                       <SelectTrigger>
@@ -191,7 +230,7 @@ export default function SettingsPage() {
                   <div className="space-y-1">
                     <Label className="text-xs">{t("quietEnd")}</Label>
                     <Select
-                      value={String(preferences.quiet_hours_end ?? 8)}
+                      value={String(device.quiet_hours_end ?? 8)}
                       onValueChange={(v) => handleQuietHoursChange("quiet_hours_end", v)}
                     >
                       <SelectTrigger>
@@ -207,6 +246,64 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                 </div>
+              </div>
+
+              <Separator />
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSendTest}
+                disabled={isSaving}
+                className="gap-1.5"
+              >
+                <Send className="size-4" />
+                {t("sendTest")}
+              </Button>
+            </>
+          )}
+
+          {otherDevices.length > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-2">
+                <Label className="text-xs uppercase text-muted-foreground">
+                  {t("otherDevices")}
+                </Label>
+                <ul className="space-y-1.5">
+                  {otherDevices.map((d) => (
+                    <li
+                      key={d.id}
+                      className="flex items-center justify-between text-sm rounded-md bg-muted/40 px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Smartphone className="size-3.5 text-muted-foreground shrink-0" />
+                        <span className="truncate">
+                          {d.device_label ?? t("unnamedDevice")}
+                        </span>
+                        <Badge
+                          variant="secondary"
+                          className={
+                            d.enabled
+                              ? "text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+                              : "text-[10px]"
+                          }
+                        >
+                          {d.enabled ? t("enabled") : t("disabled")}
+                        </Badge>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="hover:text-destructive"
+                        onClick={() => removeOtherDevice(d.id)}
+                        aria-label={t("removeDevice")}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
               </div>
             </>
           )}

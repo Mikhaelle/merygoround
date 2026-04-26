@@ -23,9 +23,23 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [isAuthenticated, isLoading, router]);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {});
-    }
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker
+      .register("/sw.js", { updateViaCache: "none" })
+      .then((registration) => {
+        registration.update().catch(() => {});
+        console.info("[merygoround] service worker registered", {
+          scope: registration.scope,
+          state:
+            registration.active?.state ??
+            registration.installing?.state ??
+            registration.waiting?.state ??
+            "unknown",
+        });
+      })
+      .catch((err) => {
+        console.error("[merygoround] service worker registration failed", err);
+      });
   }, []);
 
   if (isLoading) {

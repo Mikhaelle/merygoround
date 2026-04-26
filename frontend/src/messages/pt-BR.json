@@ -181,7 +181,17 @@
     "enabled": "Ativado",
     "disabled": "Desativado",
     "saved": "Configuracoes salvas",
-    "notificationPermissionDenied": "Permissao de notificacao negada. Ative nas configuracoes do navegador."
+    "notificationPermissionDenied": "Permissao de notificacao negada. Ative nas configuracoes do navegador.",
+    "notificationsThisDeviceDescription": "Configurado por dispositivo. Ativar/desativar aqui afeta apenas este aparelho.",
+    "thisDevice": "Este dispositivo",
+    "notificationsEnabled": "Notificacoes ativadas neste dispositivo",
+    "notificationsDisabled": "Notificacoes desativadas neste dispositivo",
+    "sendTest": "Enviar notificacao de teste",
+    "testSent": "Teste enviado. Verifique seu sistema.",
+    "testFailed": "Falha ao enviar teste. Verifique permissao e conexao.",
+    "otherDevices": "Outros dispositivos",
+    "unnamedDevice": "Dispositivo sem nome",
+    "removeDevice": "Remover dispositivo"
   },
   "navigation": {
     "home": "Roleta",

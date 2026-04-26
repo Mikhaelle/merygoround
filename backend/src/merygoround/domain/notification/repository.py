@@ -5,75 +5,44 @@ from __future__ import annotations
 import uuid
 from abc import ABC, abstractmethod
 
-from merygoround.domain.notification.entities import NotificationPreference, PushSubscription
+from merygoround.domain.notification.entities import PushSubscription
 
 
 class PushSubscriptionRepository(ABC):
-    """Abstract repository for PushSubscription persistence."""
+    """Abstract repository for PushSubscription persistence.
+
+    Each push subscription represents a single device and now carries the
+    notification preferences (enabled, interval, quiet hours) for that device.
+    """
+
+    @abstractmethod
+    async def get_by_id(self, subscription_id: uuid.UUID) -> PushSubscription | None:
+        """Retrieve a push subscription by its UUID."""
 
     @abstractmethod
     async def get_by_user_id(self, user_id: uuid.UUID) -> list[PushSubscription]:
-        """Retrieve all push subscriptions for a user.
+        """Retrieve all push subscriptions for a user."""
 
-        Args:
-            user_id: The UUID of the user.
-
-        Returns:
-            List of PushSubscription entities.
-        """
+    @abstractmethod
+    async def get_enabled(self) -> list[PushSubscription]:
+        """Retrieve every enabled push subscription across all users."""
 
     @abstractmethod
     async def get_by_endpoint(self, endpoint: str) -> PushSubscription | None:
-        """Retrieve a push subscription by its endpoint URL.
-
-        Args:
-            endpoint: The push service endpoint URL.
-
-        Returns:
-            The PushSubscription if found, otherwise None.
-        """
+        """Retrieve a push subscription by its endpoint URL."""
 
     @abstractmethod
     async def add(self, subscription: PushSubscription) -> PushSubscription:
-        """Persist a new push subscription.
+        """Persist a new push subscription."""
 
-        Args:
-            subscription: The PushSubscription entity to persist.
+    @abstractmethod
+    async def update(self, subscription: PushSubscription) -> PushSubscription:
+        """Update a persisted push subscription."""
 
-        Returns:
-            The persisted PushSubscription.
-        """
+    @abstractmethod
+    async def delete_by_id(self, subscription_id: uuid.UUID) -> None:
+        """Remove a push subscription by its UUID."""
 
     @abstractmethod
     async def delete_by_endpoint(self, endpoint: str) -> None:
-        """Remove a push subscription by its endpoint URL.
-
-        Args:
-            endpoint: The push service endpoint URL.
-        """
-
-
-class NotificationPreferenceRepository(ABC):
-    """Abstract repository for NotificationPreference persistence."""
-
-    @abstractmethod
-    async def get_by_user_id(self, user_id: uuid.UUID) -> NotificationPreference | None:
-        """Retrieve notification preferences for a user.
-
-        Args:
-            user_id: The UUID of the user.
-
-        Returns:
-            The NotificationPreference if found, otherwise None.
-        """
-
-    @abstractmethod
-    async def upsert(self, preference: NotificationPreference) -> NotificationPreference:
-        """Create or update notification preferences for a user.
-
-        Args:
-            preference: The NotificationPreference entity to upsert.
-
-        Returns:
-            The persisted NotificationPreference.
-        """
+        """Remove a push subscription by its endpoint URL."""

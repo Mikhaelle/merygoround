@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             scheduler = NotificationScheduler(
                 session_factory=session_factory,
                 push_service=push_service,
+                tz_name=settings.APP_TIMEZONE,
             )
             scheduler.start()
         except Exception:

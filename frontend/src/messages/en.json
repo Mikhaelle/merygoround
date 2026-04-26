@@ -181,7 +181,17 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "saved": "Settings saved",
-    "notificationPermissionDenied": "Notification permission was denied. Please enable it in your browser settings."
+    "notificationPermissionDenied": "Notification permission was denied. Please enable it in your browser settings.",
+    "notificationsThisDeviceDescription": "Configured per device. Toggling here only affects this device.",
+    "thisDevice": "This device",
+    "notificationsEnabled": "Notifications enabled on this device",
+    "notificationsDisabled": "Notifications disabled on this device",
+    "sendTest": "Send test notification",
+    "testSent": "Test sent. Check your system tray.",
+    "testFailed": "Failed to send test. Check permission and connection.",
+    "otherDevices": "Other devices",
+    "unnamedDevice": "Unnamed device",
+    "removeDevice": "Remove device"
   },
   "navigation": {
     "home": "Wheel",
